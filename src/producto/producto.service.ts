@@ -42,6 +42,8 @@ export class ProductoService {
 
     private readonly dataSource: DataSource,
   ) {}
+
+  //Servicio para crear Producto Completo con variantes, atributos, stock, lotes, imagenes y ofertas en una sola transaccion
   async create(createProductoDto: CreateProductoDto): Promise<Producto> {
     //1.- validamos que el codigo de barras no exista en otro producto
     if (createProductoDto.codigo_barras) {
