@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateProductoCategoriaDto {
   @IsString()
@@ -8,11 +9,16 @@ export class CreateProductoCategoriaDto {
   @IsOptional()
   descripcion?: string;
 
+  @IsString()
+  @IsOptional()
+  color_identificador?: string;
+
   @IsBoolean()
   @IsOptional()
   activo?: boolean;
 
-  @IsString()
+  @IsUUID()
   @IsOptional()
-  padre_id?: string;
+  @Transform(({ value }) => (value === '' ? null : value))
+  padre_id?: string | null;
 }

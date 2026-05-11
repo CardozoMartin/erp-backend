@@ -11,6 +11,9 @@ export class ProductoCategoria {
   @Column({ nullable: true })
   descripcion!: string;
 
+  @Column({ nullable: true })
+  color_identificador!: string;
+
   @Column({ default: true })
   activo!: boolean;
 

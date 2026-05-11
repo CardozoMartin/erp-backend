@@ -111,7 +111,9 @@ export class ProductoService {
 
     //6.- Validacion del precio base del producto, no puede ser negativo
     if (createProductoDto.precio_base < 0) {
-      throw new BadRequestException('El precio base del producto no puede ser negativo');
+      throw new BadRequestException(
+        'El precio base del producto no puede ser negativo',
+      );
     }
 
     //7.- Validamos que el precio extra de cada variante no sea negativo
@@ -126,17 +128,14 @@ export class ProductoService {
     }
 
     //8.- Validamos si tiene stock que no sea numero negativo
-      if (createProductoDto.variantes && createProductoDto.variantes.length > 0) {
-        for (const varianteDto of createProductoDto.variantes) {
-          const stock = (varianteDto as { stock?: number }).stock;
-          if (
-            stock !== undefined &&
-            stock < 0
-          ) {
-            throw new BadRequestException(
-              `El stock de la variante "${(varianteDto as { nombre?: string }).nombre}" no puede ser negativo`,
-            );
-          }
+    if (createProductoDto.variantes && createProductoDto.variantes.length > 0) {
+      for (const varianteDto of createProductoDto.variantes) {
+        const stock = (varianteDto as { stock?: number }).stock;
+        if (stock !== undefined && stock < 0) {
+          throw new BadRequestException(
+            `El stock de la variante "${(varianteDto as { nombre?: string }).nombre}" no puede ser negativo`,
+          );
+        }
       }
     }
 
@@ -185,8 +184,25 @@ export class ProductoService {
     }
   }
 
-  findAll() {
-    return `This action returns all producto`;
+  async findAll(page: number = 1, limit: number = 30) {
+    const [productos, total] = await this.productoRepo.findAndCount({
+      relations: [
+        'categoria',
+        'variantes',
+        'variantes.atributos',
+        'stock',
+        'lotes',
+        'imagenes',
+        'ofertas',
+      ],
+      order: { nombre: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return {
+      data: productos,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   findOne(id: number) {
