@@ -7,10 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Lote } from './entities/lote.entity';
 import { Imagen } from './entities/imagen.entity';
 import { Oferta } from './entities/oferta.entity';
-import { Categoria } from './entities/categoria.entity';
 import { Stock } from './entities/stock.entity';
 import { AtributoVariante } from './entities/atributo-variante.entity';
 import { Variante } from './entities/variante.entity';
+import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
 
 @Injectable()
 export class ProductoService {
@@ -37,8 +37,8 @@ export class ProductoService {
     @InjectRepository(Oferta)
     private readonly ofertaRepo: Repository<Oferta>,
 
-    @InjectRepository(Categoria)
-    private readonly categoriaRepo: Repository<Categoria>,
+    @InjectRepository(ProductoCategoria)
+    private readonly categoriaRepo: Repository<ProductoCategoria>,
 
     private readonly dataSource: DataSource,
   ) {}
@@ -58,12 +58,18 @@ export class ProductoService {
     }
 
     //2.- Validamos si tiene_variantes=true haya variantes en el DTO
-    if (
-      createProductoDto.tiene_variantes &&
-      (!createProductoDto.variantes || createProductoDto.variantes.length === 0)
-    ) {
+    const tieneVariantes =
+      createProductoDto.tiene_variantes ??
+      (!!createProductoDto.variantes && createProductoDto.variantes.length > 0);
+
+    if (tieneVariantes && (!createProductoDto.variantes || createProductoDto.variantes.length === 0)) {
       throw new BadRequestException(
         'Si el producto tiene variantes, debe incluir al menos una variante en el DTO',
+      );
+    }
+    if (!tieneVariantes && createProductoDto.variantes && createProductoDto.variantes.length > 0) {
+      throw new BadRequestException(
+        'Si el producto no tiene variantes, no debe incluir variantes en el DTO',
       );
     }
 
@@ -95,17 +101,22 @@ export class ProductoService {
       );
     }
 
-    //5.- Verificamos que el nombre de las variantes no se repita dentro del mismo producto
-    if (createProductoDto.variantes && createProductoDto.variantes.length > 0) {
-      const nombresVariantes = new Set();
-      for (const varianteDto of createProductoDto.variantes) {
-        const nombreVariante = (varianteDto as { nombre?: string }).nombre;
-        if (nombresVariantes.has(nombreVariante)) {
+    //5.- Validamos que no haya duplicados de stock por sucursal a nivel producto
+    if (createProductoDto.stock && createProductoDto.stock.length > 0) {
+      const sucursales = new Set<string>();
+      for (const stockDto of createProductoDto.stock) {
+        if (sucursales.has(stockDto.sucursal_id)) {
           throw new BadRequestException(
-            `El nombre de la variante "${nombreVariante}" se repite dentro del mismo producto`,
+            `La sucursal ${stockDto.sucursal_id} se repite en stock del producto`,
           );
         }
-        nombresVariantes.add(nombreVariante);
+        sucursales.add(stockDto.sucursal_id);
+        if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
+          throw new BadRequestException('El stock no puede ser negativo');
+        }
+        if (stockDto.cantidad_minima !== undefined && stockDto.cantidad_minima < 0) {
+          throw new BadRequestException('La cantidad minima no puede ser negativa');
+        }
       }
     }
 
@@ -121,44 +132,135 @@ export class ProductoService {
       for (const varianteDto of createProductoDto.variantes) {
         if (varianteDto.precio_extra && varianteDto.precio_extra < 0) {
           throw new BadRequestException(
-            `El precio extra de la variante "${(varianteDto as { nombre?: string }).nombre}" no puede ser negativo`,
+            'El precio extra de la variante no puede ser negativo',
           );
         }
       }
     }
-
-    //8.- Validamos si tiene stock que no sea numero negativo
+    //8.- Validamos stock, lotes y ofertas de variantes
     if (createProductoDto.variantes && createProductoDto.variantes.length > 0) {
       for (const varianteDto of createProductoDto.variantes) {
-        const stock = (varianteDto as { stock?: number }).stock;
-        if (stock !== undefined && stock < 0) {
-          throw new BadRequestException(
-            `El stock de la variante "${(varianteDto as { nombre?: string }).nombre}" no puede ser negativo`,
-          );
+        if (varianteDto.stock && varianteDto.stock.length > 0) {
+          const sucursales = new Set<string>();
+          for (const stockDto of varianteDto.stock) {
+            if (sucursales.has(stockDto.sucursal_id)) {
+              throw new BadRequestException(
+                `La sucursal ${stockDto.sucursal_id} se repite en stock de una variante`,
+              );
+            }
+            sucursales.add(stockDto.sucursal_id);
+            if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
+              throw new BadRequestException('El stock no puede ser negativo');
+            }
+            if (stockDto.cantidad_minima !== undefined && stockDto.cantidad_minima < 0) {
+              throw new BadRequestException('La cantidad minima no puede ser negativa');
+            }
+          }
+        }
+        if (varianteDto.lotes && varianteDto.lotes.length > 0) {
+          for (const loteDto of varianteDto.lotes) {
+            if (loteDto.cantidad < 0) {
+              throw new BadRequestException('La cantidad del lote no puede ser negativa');
+            }
+          }
+        }
+        if (varianteDto.ofertas && varianteDto.ofertas.length > 0) {
+          for (const ofertaDto of varianteDto.ofertas) {
+            if (ofertaDto.fecha_inicio > ofertaDto.fecha_fin) {
+              throw new BadRequestException('La fecha de inicio de oferta no puede ser mayor a la fecha fin');
+            }
+          }
         }
       }
     }
 
-    const queryRunner =
-      this.productoRepo.manager.connection.createQueryRunner();
+    if (createProductoDto.ofertas && createProductoDto.ofertas.length > 0) {
+      for (const ofertaDto of createProductoDto.ofertas) {
+        if (ofertaDto.fecha_inicio > ofertaDto.fecha_fin) {
+          throw new BadRequestException('La fecha de inicio de oferta no puede ser mayor a la fecha fin');
+        }
+      }
+    }
+
+    if (createProductoDto.lotes && createProductoDto.lotes.length > 0 && !createProductoDto.tiene_vencimiento) {
+      throw new BadRequestException(
+        'Si el producto no tiene vencimiento, no debe incluir lotes en el DTO',
+      );
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
       const producto = this.productoRepo.create({
         ...createProductoDto,
+        tiene_variantes: tieneVariantes,
         variantes: undefined,
+        stock: undefined,
+        lotes: undefined,
+        imagenes: undefined,
+        ofertas: undefined,
       });
 
       await queryRunner.manager.save(producto);
 
+      // Si el producto tiene relaciones a nivel producto, las creamos primero
+      if (createProductoDto.stock && createProductoDto.stock.length > 0) {
+        for (const stockDto of createProductoDto.stock) {
+          const stock = this.stockRepo.create({
+            ...stockDto,
+            producto: producto,
+            variante_id: null,
+          } as Partial<Stock>);
+          await queryRunner.manager.save(stock);
+        }
+      }
+
+      if (createProductoDto.lotes && createProductoDto.lotes.length > 0) {
+        for (const loteDto of createProductoDto.lotes) {
+          const lote = this.loteRepo.create({
+            ...loteDto,
+            producto: producto,
+            variante_id: null,
+          } as Partial<Lote>);
+          await queryRunner.manager.save(lote);
+        }
+      }
+
+      if (createProductoDto.imagenes && createProductoDto.imagenes.length > 0) {
+        for (const imagenDto of createProductoDto.imagenes) {
+          const imagen = this.imagenRepo.create({
+            ...imagenDto,
+            producto: producto,
+            variante_id: null,
+          });
+          await queryRunner.manager.save(imagen);
+        }
+      }
+
+      if (createProductoDto.ofertas && createProductoDto.ofertas.length > 0) {
+        for (const ofertaDto of createProductoDto.ofertas) {
+          const oferta = this.ofertaRepo.create({
+            ...ofertaDto,
+            producto: producto,
+            variante_id: null,
+          } as Partial<Oferta>);
+          await queryRunner.manager.save(oferta);
+        }
+      }
+
       // Si el producto tiene variantes, las creamos en cascada
-      if (createProductoDto.tiene_variantes && createProductoDto.variantes) {
+      if (tieneVariantes && createProductoDto.variantes) {
         for (const varianteDto of createProductoDto.variantes) {
           const variante = this.varianteRepo.create({
             ...varianteDto,
             producto: producto,
             atributos: undefined,
+            stock: undefined,
+            lotes: undefined,
+            imagenes: undefined,
+            ofertas: undefined,
           });
           await queryRunner.manager.save(variante);
 
@@ -170,6 +272,50 @@ export class ProductoService {
                 variante: variante,
               });
               await queryRunner.manager.save(atributo);
+            }
+          }
+
+          if (varianteDto.stock && varianteDto.stock.length > 0) {
+            for (const stockDto of varianteDto.stock) {
+              const stock = this.stockRepo.create({
+                ...stockDto,
+                producto: producto,
+                variante: variante,
+              } as Partial<Stock>);
+              await queryRunner.manager.save(stock);
+            }
+          }
+
+          if (varianteDto.lotes && varianteDto.lotes.length > 0) {
+            for (const loteDto of varianteDto.lotes) {
+              const lote = this.loteRepo.create({
+                ...loteDto,
+                producto: producto,
+                variante: variante,
+              } as Partial<Lote>);
+              await queryRunner.manager.save(lote);
+            }
+          }
+
+          if (varianteDto.imagenes && varianteDto.imagenes.length > 0) {
+            for (const imagenDto of varianteDto.imagenes) {
+              const imagen = this.imagenRepo.create({
+                ...imagenDto,
+                producto: producto,
+                variante: variante,
+              });
+              await queryRunner.manager.save(imagen);
+            }
+          }
+
+          if (varianteDto.ofertas && varianteDto.ofertas.length > 0) {
+            for (const ofertaDto of varianteDto.ofertas) {
+              const oferta = this.ofertaRepo.create({
+                ...ofertaDto,
+                producto: producto,
+                variante: variante,
+              } as Partial<Oferta>);
+              await queryRunner.manager.save(oferta);
             }
           }
         }
@@ -205,15 +351,15 @@ export class ProductoService {
     };
   }
 
-  findOne(id: number) {
+  findOne(id: string) {
     return `This action returns a #${id} producto`;
   }
 
-  update(id: number, updateProductoDto: UpdateProductoDto) {
+  update(id: string, updateProductoDto: UpdateProductoDto) {
     return `This action updates a #${id} producto`;
   }
 
-  remove(id: number) {
+  remove(id: string) {
     return `This action removes a #${id} producto`;
   }
 }

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AtributoVariante } from './entities/atributo-variante.entity';
-import { Categoria } from './entities/categoria.entity';
+import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
 import { Imagen } from './entities/imagen.entity';
 import { Lote } from './entities/lote.entity';
 import { Oferta } from './entities/oferta.entity';
@@ -21,7 +21,7 @@ import { ProductoService } from './producto.service';
       Lote,
       Imagen,
       Oferta,
-      Categoria,
+      ProductoCategoria,
     ]),
   ],
   controllers: [ProductoController],

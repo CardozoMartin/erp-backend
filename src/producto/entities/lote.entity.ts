@@ -31,7 +31,7 @@ export class Lote {
   variante!: Variante;
 
   @Column({ nullable: true })
-  variante_id!: string;
+  variante_id!: string | null;
 
   @Column()
   sucursal_id!: string;

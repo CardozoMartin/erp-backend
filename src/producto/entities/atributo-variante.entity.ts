@@ -27,6 +27,6 @@ export class AtributoVariante {
   @Column({ length: 100 })
   valor!: string;
 
-  @Column()
-  metadata!: string;
+  @Column({ type: 'text', nullable: true })
+  metadata!: string | null;
 }

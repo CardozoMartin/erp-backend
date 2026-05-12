@@ -4,6 +4,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ProductosModule } from './producto/producto.module';
 import { ProductoCategoriaModule } from './producto-categoria/producto-categoria.module';
+import { StockModule } from './stock/stock.module';
+import { LoteModule } from './lote/lote.module';
+import { ImagenModule } from './imagen/imagen.module';
+import { OfertaModule } from './oferta/oferta.module';
+import { VarianteModule } from './variante/variante.module';
+import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
 
 @Module({
   imports: [
@@ -20,6 +26,12 @@ import { ProductoCategoriaModule } from './producto-categoria/producto-categoria
     }),
     ProductosModule,
     ProductoCategoriaModule,
+    StockModule,
+    LoteModule,
+    ImagenModule,
+    OfertaModule,
+    VarianteModule,
+    AtributoVarianteModule,
   ],
   controllers: [AppController],
   providers: [AppService],

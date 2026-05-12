@@ -32,7 +32,7 @@ export class Stock {
   variante!: Variante;
 
   @Column({ nullable: true })
-  variante_id!: string;
+  variante_id!: string | null;
 
   //ID de sucursal (referencia a tu tabla de sucursales)
   @Column()
