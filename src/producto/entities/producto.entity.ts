@@ -8,7 +8,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Categoria } from './categoria.entity';
+import { ProductoCategoria } from '../../producto-categoria/entities/producto-categoria.entity';
 import { Variante } from './variante.entity';
 import { Stock } from './stock.entity';
 import { Lote } from './lote.entity';
@@ -62,12 +62,12 @@ export class Producto {
   es_fraccionable!: boolean;
 
   //Relaciones
-  @ManyToOne(() => Categoria, { eager: true, nullable: true })
+  @ManyToOne(() => ProductoCategoria, { eager: true, nullable: true })
   @JoinColumn({ name: 'categoria_id' })
-  categoria!: Categoria;
+  categoria!: ProductoCategoria | null;
 
   @Column({ nullable: true })
-  categoria_id!: string;
+  categoria_id!: string | null;
 
   @OneToMany(() => Variante, (variante) => variante.producto, { cascade: true })
   variantes!: Variante[];
