@@ -28,7 +28,7 @@ export class Oferta {
   variante!: Variante;
 
   @Column({ nullable: true })
-  variante_id!: string;
+  variante_id!: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   precio_oferta!: number;

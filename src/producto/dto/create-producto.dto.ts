@@ -14,6 +14,7 @@ import {
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { UnidadVenta } from '../entities/producto.entity';
+import { RolImagen } from '../entities/imagen.entity';
 
 // ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
@@ -44,10 +45,113 @@ export class CreateVarianteDto {
   @IsBoolean()
   activo?: boolean;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateAtributoVarianteDto)
-  atributos!: CreateAtributoVarianteDto[];
+  atributos?: CreateAtributoVarianteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateStockDto)
+  stock?: CreateStockDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateLoteDto)
+  lotes?: CreateLoteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateImagenDto)
+  imagenes?: CreateImagenDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOfertaDto)
+  ofertas?: CreateOfertaDto[];
+}
+
+// ─── DTO para registrar stock (producto o variante) ───
+export class CreateStockDto {
+  @IsUUID()
+  sucursal_id!: string;
+
+  @IsOptional()
+  @IsNumber()
+  cantidad?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  cantidad_minima?: number;
+}
+
+// ─── DTO para registrar lote con vencimiento ───
+export class CreateLoteDto {
+  @IsUUID()
+  sucursal_id!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  numero_lote?: string;
+
+  @Type(() => Date)
+  fecha_vencimiento!: Date;
+
+  @IsNumber()
+  @Min(0)
+  cantidad!: number;
+}
+
+// ─── DTO para registrar imagen ───
+export class CreateImagenDto {
+  @IsOptional()
+  @IsEnum(RolImagen)
+  rol?: RolImagen;
+
+  @IsString()
+  @MaxLength(500)
+  url!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  alt_text?: string;
+
+  @IsOptional()
+  @IsNumber()
+  orden?: number;
+
+  @IsOptional()
+  @IsNumber()
+  ancho_px?: number;
+
+  @IsOptional()
+  @IsNumber()
+  alto_px?: number;
+}
+
+// ─── DTO para crear oferta ───
+export class CreateOfertaDto {
+  @IsNumber()
+  @Min(0)
+  precio_oferta!: number;
+
+  @Type(() => Date)
+  fecha_inicio!: Date;
+
+  @Type(() => Date)
+  fecha_fin!: Date;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
 // ─── DTO principal de creación ───
@@ -108,6 +212,30 @@ export class CreateProductoDto {
   @ValidateNested({ each: true })
   @Type(() => CreateVarianteDto)
   variantes?: CreateVarianteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateStockDto)
+  stock?: CreateStockDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateLoteDto)
+  lotes?: CreateLoteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateImagenDto)
+  imagenes?: CreateImagenDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOfertaDto)
+  ofertas?: CreateOfertaDto[];
 }
 
 // ─── DTO de actualización (todos opcionales) ───
@@ -163,65 +291,4 @@ export class FiltrosProductoDto {
   @Min(1)
   @Type(() => Number)
   limite?: number;
-}
-
-// ─── DTO para crear oferta sobre un producto o variante ───
-export class CreateOfertaDto {
-  @IsOptional()
-  @IsUUID()
-  variante_id?: string;
-
-  @IsNumber()
-  @Min(0)
-  precio_oferta!: number;
-
-  @Type(() => Date)
-  fecha_inicio!: Date;
-
-  @Type(() => Date)
-  fecha_fin!: Date;
-
-  @IsOptional()
-  @IsBoolean()
-  activo?: boolean;
-}
-
-// ─── DTO para registrar/ajustar stock ───
-export class AjusteStockDto {
-  @IsOptional()
-  @IsUUID()
-  variante_id?: string;
-
-  @IsUUID()
-  sucursal_id!: string;
-
-  @IsNumber()
-  cantidad!: number; // positivo = ingreso, negativo = egreso
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  cantidad_minima?: number;
-}
-
-// ─── DTO para registrar lote con vencimiento ───
-export class CreateLoteDto {
-  @IsOptional()
-  @IsUUID()
-  variante_id?: string;
-
-  @IsUUID()
-  sucursal_id!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  numero_lote?: string;
-
-  @Type(() => Date)
-  fecha_vencimiento!: Date;
-
-  @IsNumber()
-  @Min(0)
-  cantidad!: number;
 }
