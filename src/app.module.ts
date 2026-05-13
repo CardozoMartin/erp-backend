@@ -10,6 +10,9 @@ import { ImagenModule } from './imagen/imagen.module';
 import { OfertaModule } from './oferta/oferta.module';
 import { VarianteModule } from './variante/variante.module';
 import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
+import { VentasModuloModule } from './ventas-modulo/ventas-modulo.module';
+import { PagosModuleModule } from './pagos-module/pagos-module.module';
+import { RetirosModuleModule } from './retiros-module/retiros-module.module';
 
 @Module({
   imports: [
@@ -32,6 +35,9 @@ import { AtributoVarianteModule } from './atributo-variante/atributo-variante.mo
     OfertaModule,
     VarianteModule,
     AtributoVarianteModule,
+    VentasModuloModule,
+    PagosModuleModule,
+    RetirosModuleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
