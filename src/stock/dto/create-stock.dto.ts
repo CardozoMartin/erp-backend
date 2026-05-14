@@ -1,4 +1,5 @@
-import { IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateStockDto {
   @IsUUID()
@@ -8,8 +9,10 @@ export class CreateStockDto {
   @IsUUID()
   variante_id?: string;
 
-  @IsUUID()
-  sucursal_id!: string;
+  @IsOptional()
+  @Transform(({ value }) => value ?? '')
+  @IsString()
+  sucursal_id?: string;
 
   @IsOptional()
   @IsNumber()

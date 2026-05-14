@@ -105,12 +105,15 @@ export class ProductoService {
     if (createProductoDto.stock && createProductoDto.stock.length > 0) {
       const sucursales = new Set<string>();
       for (const stockDto of createProductoDto.stock) {
-        if (sucursales.has(stockDto.sucursal_id)) {
+        const sucursalKey = stockDto.sucursal_id || 'stock-general';
+        if (sucursales.has(sucursalKey)) {
           throw new BadRequestException(
-            `La sucursal ${stockDto.sucursal_id} se repite en stock del producto`,
+            stockDto.sucursal_id
+              ? `La sucursal ${stockDto.sucursal_id} se repite en stock del producto`
+              : 'El stock general se repite en stock del producto',
           );
         }
-        sucursales.add(stockDto.sucursal_id);
+        sucursales.add(sucursalKey);
         if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
           throw new BadRequestException('El stock no puede ser negativo');
         }
@@ -143,12 +146,15 @@ export class ProductoService {
         if (varianteDto.stock && varianteDto.stock.length > 0) {
           const sucursales = new Set<string>();
           for (const stockDto of varianteDto.stock) {
-            if (sucursales.has(stockDto.sucursal_id)) {
+            const sucursalKey = stockDto.sucursal_id || 'stock-general';
+            if (sucursales.has(sucursalKey)) {
               throw new BadRequestException(
-                `La sucursal ${stockDto.sucursal_id} se repite en stock de una variante`,
+                stockDto.sucursal_id
+                  ? `La sucursal ${stockDto.sucursal_id} se repite en stock de una variante`
+                  : 'El stock general se repite en stock de una variante',
               );
             }
-            sucursales.add(stockDto.sucursal_id);
+            sucursales.add(sucursalKey);
             if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
               throw new BadRequestException('El stock no puede ser negativo');
             }
@@ -212,6 +218,7 @@ export class ProductoService {
             ...stockDto,
             producto: producto,
             variante_id: null,
+            sucursal_id: stockDto.sucursal_id ?? null,
           } as Partial<Stock>);
           await queryRunner.manager.save(stock);
         }
@@ -223,6 +230,7 @@ export class ProductoService {
             ...loteDto,
             producto: producto,
             variante_id: null,
+            sucursal_id: loteDto.sucursal_id ?? null,
           } as Partial<Lote>);
           await queryRunner.manager.save(lote);
         }
@@ -281,6 +289,7 @@ export class ProductoService {
                 ...stockDto,
                 producto: producto,
                 variante: variante,
+                sucursal_id: stockDto.sucursal_id ?? null,
               } as Partial<Stock>);
               await queryRunner.manager.save(stock);
             }
@@ -292,6 +301,7 @@ export class ProductoService {
                 ...loteDto,
                 producto: producto,
                 variante: variante,
+                sucursal_id: loteDto.sucursal_id ?? null,
               } as Partial<Lote>);
               await queryRunner.manager.save(lote);
             }

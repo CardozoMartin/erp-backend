@@ -13,6 +13,7 @@ import { AtributoVarianteModule } from './atributo-variante/atributo-variante.mo
 import { VentasModuloModule } from './ventas-modulo/ventas-modulo.module';
 import { PagosModuleModule } from './pagos-module/pagos-module.module';
 import { RetirosModuleModule } from './retiros-module/retiros-module.module';
+import { SucursalModule } from './sucursal/sucursal.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { RetirosModuleModule } from './retiros-module/retiros-module.module';
     VentasModuloModule,
     PagosModuleModule,
     RetirosModuleModule,
+    SucursalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

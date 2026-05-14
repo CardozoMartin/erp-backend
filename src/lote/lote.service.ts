@@ -39,6 +39,7 @@ export class LoteService {
       producto: producto,
       variante: variante ?? undefined,
       variante_id: dto.variante_id ?? null,
+      sucursal_id: dto.sucursal_id ?? null,
     } as Partial<Lote>);
     return this.loteRepo.save(lote);
   }

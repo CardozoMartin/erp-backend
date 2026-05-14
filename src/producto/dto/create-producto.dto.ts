@@ -11,7 +11,7 @@ import {
   ValidateNested,
   IsNotEmpty,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { UnidadVenta } from '../entities/producto.entity';
 import { RolImagen } from '../entities/imagen.entity';
@@ -78,8 +78,10 @@ export class CreateVarianteDto {
 
 // ─── DTO para registrar stock (producto o variante) ───
 export class CreateStockDto {
-  @IsUUID()
-  sucursal_id!: string;
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsString()
+  sucursal_id?: string | null;
 
   @IsOptional()
   @IsNumber()
@@ -93,8 +95,10 @@ export class CreateStockDto {
 
 // ─── DTO para registrar lote con vencimiento ───
 export class CreateLoteDto {
-  @IsUUID()
-  sucursal_id!: string;
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsString()
+  sucursal_id?: string | null;
 
   @IsOptional()
   @IsString()

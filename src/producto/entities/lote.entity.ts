@@ -33,8 +33,8 @@ export class Lote {
   @Column({ nullable: true })
   variante_id!: string | null;
 
-  @Column()
-  sucursal_id!: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  sucursal_id!: string | null;
 
   // ─── Identificador del lote (puede venir del proveedor o generarse interno) ───
   @Column({ length: 100, nullable: true })

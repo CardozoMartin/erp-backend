@@ -35,7 +35,7 @@ export class StockService {
       where: {
         producto_id: dto.producto_id,
         variante_id: dto.variante_id ?? IsNull(),
-        sucursal_id: dto.sucursal_id,
+        sucursal_id: dto.sucursal_id ?? IsNull(),
       },
     });
     if (existente) {
@@ -47,6 +47,7 @@ export class StockService {
       producto: producto,
       variante: variante ?? undefined,
       variante_id: dto.variante_id ?? null,
+      sucursal_id: dto.sucursal_id ?? null,
     } as Partial<Stock>);
     return this.stockRepo.save(stock);
   }
