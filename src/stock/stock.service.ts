@@ -1,8 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { Stock } from '../producto/entities/stock.entity';
 import { Producto } from '../producto/entities/producto.entity';
+import { Stock } from '../producto/entities/stock.entity';
 import { Variante } from '../producto/entities/variante.entity';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
@@ -19,15 +23,21 @@ export class StockService {
   ) {}
 
   async create(dto: CreateStockDto): Promise<Stock> {
-    const producto = await this.productoRepo.findOne({ where: { id: dto.producto_id } });
+    const producto = await this.productoRepo.findOne({
+      where: { id: dto.producto_id },
+    });
     if (!producto) throw new NotFoundException('Producto no encontrado');
 
     let variante: Variante | null = null;
     if (dto.variante_id) {
-      variante = await this.varianteRepo.findOne({ where: { id: dto.variante_id } });
+      variante = await this.varianteRepo.findOne({
+        where: { id: dto.variante_id },
+      });
       if (!variante) throw new NotFoundException('Variante no encontrada');
       if (variante.producto_id !== dto.producto_id) {
-        throw new BadRequestException('La variante no pertenece al producto indicado');
+        throw new BadRequestException(
+          'La variante no pertenece al producto indicado',
+        );
       }
     }
 
@@ -39,7 +49,9 @@ export class StockService {
       },
     });
     if (existente) {
-      throw new BadRequestException('Ya existe stock para ese producto, variante y sucursal');
+      throw new BadRequestException(
+        'Ya existe stock para ese producto, variante y sucursal',
+      );
     }
 
     const stock = this.stockRepo.create({
