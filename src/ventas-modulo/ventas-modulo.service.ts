@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Producto } from 'src/producto/entities/producto.entity';
+import { Producto } from '../producto/entities/producto.entity';
 import { DataSource, Repository } from 'typeorm';
 import { CreateVentasModuloDto } from './dto/create-ventas-modulo.dto';
 import { VentaHistorial } from './entities/venta-historial.entity';

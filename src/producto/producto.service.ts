@@ -1,15 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { Producto } from './entities/producto.entity';
 import { DataSource, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Lote } from './entities/lote.entity';
-import { Imagen } from './entities/imagen.entity';
-import { Oferta } from './entities/oferta.entity';
-import { Stock } from './entities/stock.entity';
-import { AtributoVariante } from './entities/atributo-variante.entity';
-import { Variante } from './entities/variante.entity';
+import { Lote } from '../lote/entities/lote.entity';
+import { Imagen } from '../imagen/entities/imagen.entity';
+import { Oferta } from '../oferta/entities/oferta.entity';
+import { Stock } from '../stock/entities/stock.entity';
+import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
 
 @Injectable()
@@ -45,6 +49,10 @@ export class ProductoService {
 
   //Servicio para crear Producto Completo con variantes, atributos, stock, lotes, imagenes y ofertas en una sola transaccion
   async create(createProductoDto: CreateProductoDto): Promise<Producto> {
+    createProductoDto.nombre = createProductoDto.nombre.trim();
+    createProductoDto.codigo_barras =
+      createProductoDto.codigo_barras?.trim() || null;
+
     //1.- validamos que el codigo de barras no exista en otro producto
     if (createProductoDto.codigo_barras) {
       const existeCodigo = await this.productoRepo.findOne({
@@ -62,12 +70,19 @@ export class ProductoService {
       createProductoDto.tiene_variantes ??
       (!!createProductoDto.variantes && createProductoDto.variantes.length > 0);
 
-    if (tieneVariantes && (!createProductoDto.variantes || createProductoDto.variantes.length === 0)) {
+    if (
+      tieneVariantes &&
+      (!createProductoDto.variantes || createProductoDto.variantes.length === 0)
+    ) {
       throw new BadRequestException(
         'Si el producto tiene variantes, debe incluir al menos una variante en el DTO',
       );
     }
-    if (!tieneVariantes && createProductoDto.variantes && createProductoDto.variantes.length > 0) {
+    if (
+      !tieneVariantes &&
+      createProductoDto.variantes &&
+      createProductoDto.variantes.length > 0
+    ) {
       throw new BadRequestException(
         'Si el producto no tiene variantes, no debe incluir variantes en el DTO',
       );
@@ -84,7 +99,7 @@ export class ProductoService {
     }
 
     //4.- verificamos que el nombre del producto no sea vacio con espacios o que ya exista otro producto con el mismo nombre (ignorando mayusculas y minusculas)
-    if (createProductoDto.nombre.trim() === '') {
+    if (createProductoDto.nombre === '') {
       throw new BadRequestException(
         'El nombre del producto no puede estar vacío',
       );
@@ -92,7 +107,7 @@ export class ProductoService {
     const existeNombre = await this.productoRepo
       .createQueryBuilder('p')
       .where('LOWER(p.nombre) = LOWER(:nombre)', {
-        nombre: createProductoDto.nombre.trim(),
+        nombre: createProductoDto.nombre,
       })
       .getOne();
     if (existeNombre) {
@@ -117,8 +132,13 @@ export class ProductoService {
         if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
           throw new BadRequestException('El stock no puede ser negativo');
         }
-        if (stockDto.cantidad_minima !== undefined && stockDto.cantidad_minima < 0) {
-          throw new BadRequestException('La cantidad minima no puede ser negativa');
+        if (
+          stockDto.cantidad_minima !== undefined &&
+          stockDto.cantidad_minima < 0
+        ) {
+          throw new BadRequestException(
+            'La cantidad minima no puede ser negativa',
+          );
         }
       }
     }
@@ -158,22 +178,31 @@ export class ProductoService {
             if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
               throw new BadRequestException('El stock no puede ser negativo');
             }
-            if (stockDto.cantidad_minima !== undefined && stockDto.cantidad_minima < 0) {
-              throw new BadRequestException('La cantidad minima no puede ser negativa');
+            if (
+              stockDto.cantidad_minima !== undefined &&
+              stockDto.cantidad_minima < 0
+            ) {
+              throw new BadRequestException(
+                'La cantidad minima no puede ser negativa',
+              );
             }
           }
         }
         if (varianteDto.lotes && varianteDto.lotes.length > 0) {
           for (const loteDto of varianteDto.lotes) {
             if (loteDto.cantidad < 0) {
-              throw new BadRequestException('La cantidad del lote no puede ser negativa');
+              throw new BadRequestException(
+                'La cantidad del lote no puede ser negativa',
+              );
             }
           }
         }
         if (varianteDto.ofertas && varianteDto.ofertas.length > 0) {
           for (const ofertaDto of varianteDto.ofertas) {
             if (ofertaDto.fecha_inicio > ofertaDto.fecha_fin) {
-              throw new BadRequestException('La fecha de inicio de oferta no puede ser mayor a la fecha fin');
+              throw new BadRequestException(
+                'La fecha de inicio de oferta no puede ser mayor a la fecha fin',
+              );
             }
           }
         }
@@ -183,12 +212,18 @@ export class ProductoService {
     if (createProductoDto.ofertas && createProductoDto.ofertas.length > 0) {
       for (const ofertaDto of createProductoDto.ofertas) {
         if (ofertaDto.fecha_inicio > ofertaDto.fecha_fin) {
-          throw new BadRequestException('La fecha de inicio de oferta no puede ser mayor a la fecha fin');
+          throw new BadRequestException(
+            'La fecha de inicio de oferta no puede ser mayor a la fecha fin',
+          );
         }
       }
     }
 
-    if (createProductoDto.lotes && createProductoDto.lotes.length > 0 && !createProductoDto.tiene_vencimiento) {
+    if (
+      createProductoDto.lotes &&
+      createProductoDto.lotes.length > 0 &&
+      !createProductoDto.tiene_vencimiento
+    ) {
       throw new BadRequestException(
         'Si el producto no tiene vencimiento, no debe incluir lotes en el DTO',
       );
@@ -331,7 +366,7 @@ export class ProductoService {
         }
       }
       await queryRunner.commitTransaction();
-      return producto;
+      return this.findOne(producto.id);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -361,15 +396,265 @@ export class ProductoService {
     };
   }
 
-  findOne(id: string) {
-    return `This action returns a #${id} producto`;
+  async findOne(id: string): Promise<Producto> {
+    const producto = await this.productoRepo.findOne({
+      where: { id },
+      relations: [
+        'categoria',
+        'variantes',
+        'variantes.atributos',
+        'variantes.stock',
+        'variantes.lotes',
+        'variantes.imagenes',
+        'variantes.ofertas',
+        'stock',
+        'lotes',
+        'imagenes',
+        'ofertas',
+      ],
+    });
+    if (!producto) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+    return producto;
   }
 
-  update(id: string, updateProductoDto: UpdateProductoDto) {
-    return `This action updates a #${id} producto`;
+  async update(
+    id: string,
+    updateProductoDto: UpdateProductoDto,
+  ): Promise<Producto> {
+    // 1. Verificar que el producto existe
+    const producto = await this.findOne(id);
+    if (updateProductoDto.nombre) {
+      updateProductoDto.nombre = updateProductoDto.nombre.trim();
+    }
+    if (updateProductoDto.codigo_barras !== undefined) {
+      updateProductoDto.codigo_barras =
+        updateProductoDto.codigo_barras?.trim() || null;
+    }
+
+    // 2. Validar nombre único si se está actualizando
+    if (
+      updateProductoDto.nombre &&
+      updateProductoDto.nombre.trim() !== producto.nombre
+    ) {
+      const existeNombre = await this.productoRepo
+        .createQueryBuilder('p')
+        .where('LOWER(p.nombre) = LOWER(:nombre) AND p.id != :id', {
+          nombre: updateProductoDto.nombre.trim(),
+          id,
+        })
+        .getOne();
+      if (existeNombre) {
+        throw new BadRequestException(
+          'Ya existe un producto con el mismo nombre',
+        );
+      }
+    }
+
+    // 3. Validar código de barras único si se está actualizando
+    if (
+      updateProductoDto.codigo_barras &&
+      updateProductoDto.codigo_barras !== producto.codigo_barras
+    ) {
+      const existeCodigo = await this.productoRepo.findOne({
+        where: { codigo_barras: updateProductoDto.codigo_barras },
+      });
+      if (existeCodigo && existeCodigo.id !== id) {
+        throw new BadRequestException(
+          'El código de barras ya existe en otro producto',
+        );
+      }
+    }
+
+    // 4. Validar categoría si se envía
+    if (updateProductoDto.categoria_id) {
+      const categoria = await this.categoriaRepo.findOne({
+        where: { id: updateProductoDto.categoria_id },
+      });
+      if (!categoria) {
+        throw new BadRequestException('La categoría especificada no existe');
+      }
+    }
+    //si el producto tiene una oferta  ?
+    //primero verificamos que el porudcto tenga activo el campo de la oferta
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 5. Actualizar campos del producto (sin las relaciones)
+      const { variantes, stock, lotes, imagenes, ofertas, ...productoData } =
+        updateProductoDto;
+      Object.assign(producto, productoData);
+      await queryRunner.manager.save(producto);
+
+      // 6. Sync stock a nivel producto (delete & recreate)
+      if (stock !== undefined) {
+        await queryRunner.manager.delete(Stock, {
+          producto_id: id,
+          variante_id: null as any,
+        });
+        if (stock && stock.length > 0) {
+          for (const stockDto of stock) {
+            const s = this.stockRepo.create({
+              ...stockDto,
+              producto: producto,
+              variante_id: null,
+              sucursal_id: stockDto.sucursal_id ?? null,
+            } as Partial<Stock>);
+            await queryRunner.manager.save(s);
+          }
+        }
+      }
+
+      // 7. Sync lotes a nivel producto
+      if (lotes !== undefined) {
+        await queryRunner.manager.delete(Lote, {
+          producto_id: id,
+          variante_id: null as any,
+        });
+        if (lotes && lotes.length > 0) {
+          for (const loteDto of lotes) {
+            const l = this.loteRepo.create({
+              ...loteDto,
+              producto: producto,
+              variante_id: null,
+              sucursal_id: loteDto.sucursal_id ?? null,
+            } as Partial<Lote>);
+            await queryRunner.manager.save(l);
+          }
+        }
+      }
+
+      // 8. Sync imágenes a nivel producto
+      if (imagenes !== undefined) {
+        await queryRunner.manager.delete(Imagen, {
+          producto_id: id,
+          variante_id: null as any,
+        });
+        if (imagenes && imagenes.length > 0) {
+          for (const imagenDto of imagenes) {
+            const img = this.imagenRepo.create({
+              ...imagenDto,
+              producto: producto,
+              variante_id: null,
+            });
+            await queryRunner.manager.save(img);
+          }
+        }
+      }
+
+      // 9. Sync ofertas a nivel producto
+      if (ofertas !== undefined) {
+        await queryRunner.manager.delete(Oferta, {
+          producto_id: id,
+          variante_id: null as any,
+        });
+        if (ofertas && ofertas.length > 0) {
+          for (const ofertaDto of ofertas) {
+            const o = this.ofertaRepo.create({
+              ...ofertaDto,
+              producto: producto,
+              variante_id: null,
+            } as Partial<Oferta>);
+            await queryRunner.manager.save(o);
+          }
+        }
+      }
+
+      // 10. Sync variantes (delete old, recreate)
+      if (variantes !== undefined) {
+        // Borrar variantes viejas (cascade borra atributos, stock, lotes, imagenes, ofertas de variante)
+        await queryRunner.manager.delete(Variante, { producto_id: id });
+        if (variantes && variantes.length > 0) {
+          for (const varianteDto of variantes) {
+            const variante = this.varianteRepo.create({
+              ...varianteDto,
+              producto: producto,
+              atributos: undefined,
+              stock: undefined,
+              lotes: undefined,
+              imagenes: undefined,
+              ofertas: undefined,
+            });
+            await queryRunner.manager.save(variante);
+
+            if (varianteDto.atributos && varianteDto.atributos.length > 0) {
+              for (const attrDto of varianteDto.atributos) {
+                const atributo = this.atributoRepo.create({
+                  ...attrDto,
+                  variante: variante,
+                });
+                await queryRunner.manager.save(atributo);
+              }
+            }
+
+            if (varianteDto.stock && varianteDto.stock.length > 0) {
+              for (const stockDto of varianteDto.stock) {
+                const s = this.stockRepo.create({
+                  ...stockDto,
+                  producto: producto,
+                  variante: variante,
+                  sucursal_id: stockDto.sucursal_id ?? null,
+                } as Partial<Stock>);
+                await queryRunner.manager.save(s);
+              }
+            }
+
+            if (varianteDto.lotes && varianteDto.lotes.length > 0) {
+              for (const loteDto of varianteDto.lotes) {
+                const l = this.loteRepo.create({
+                  ...loteDto,
+                  producto: producto,
+                  variante: variante,
+                  sucursal_id: loteDto.sucursal_id ?? null,
+                } as Partial<Lote>);
+                await queryRunner.manager.save(l);
+              }
+            }
+
+            if (varianteDto.imagenes && varianteDto.imagenes.length > 0) {
+              for (const imagenDto of varianteDto.imagenes) {
+                const img = this.imagenRepo.create({
+                  ...imagenDto,
+                  producto: producto,
+                  variante: variante,
+                });
+                await queryRunner.manager.save(img);
+              }
+            }
+
+            if (varianteDto.ofertas && varianteDto.ofertas.length > 0) {
+              for (const ofertaDto of varianteDto.ofertas) {
+                const o = this.ofertaRepo.create({
+                  ...ofertaDto,
+                  producto: producto,
+                  variante: variante,
+                } as Partial<Oferta>);
+                await queryRunner.manager.save(o);
+              }
+            }
+          }
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return this.findOne(id);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
-  remove(id: string) {
-    return `This action removes a #${id} producto`;
+  async remove(id: string): Promise<void> {
+    const producto = await this.productoRepo.findOne({ where: { id } });
+    if (!producto) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+    await this.productoRepo.remove(producto);
   }
 }

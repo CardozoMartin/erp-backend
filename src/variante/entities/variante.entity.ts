@@ -8,12 +8,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Producto } from './producto.entity';
-import { AtributoVariante } from './atributo-variante.entity';
-import { Stock } from './stock.entity';
-import { Lote } from './lote.entity';
-import { Imagen } from './imagen.entity';
-import { Oferta } from './oferta.entity';
+import { Producto } from '../../producto/entities/producto.entity';
+import { AtributoVariante } from '../../atributo-variante/entities/atributo-variante.entity';
+import { Stock } from '../../stock/entities/stock.entity';
+import { Lote } from '../../lote/entities/lote.entity';
+import { Imagen } from '../../imagen/entities/imagen.entity';
+import { Oferta } from '../../oferta/entities/oferta.entity';
 
 @Entity('variantes')
 export class Variante {

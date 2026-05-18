@@ -7,8 +7,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Producto } from './producto.entity';
-import { Variante } from './variante.entity';
+import { Producto } from '../../producto/entities/producto.entity';
+import { Variante } from '../../variante/entities/variante.entity';
 
 @Entity('ofertas')
 export class Oferta {

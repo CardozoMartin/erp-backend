@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsDate, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class CreateLoteDto {
@@ -19,6 +19,7 @@ export class CreateLoteDto {
   @MaxLength(100)
   numero_lote?: string;
 
+  @IsDate()
   @Type(() => Date)
   fecha_vencimiento!: Date;
 

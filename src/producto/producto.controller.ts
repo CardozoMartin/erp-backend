@@ -18,7 +18,7 @@ export class ProductoController {
 
   @Post()
   create(@Body() createProductoDto: CreateProductoDto) {
-    console.log('DTO recibido en el controlador:', createProductoDto);
+    console.log('DTO recibido en el controller:', createProductoDto);
     const producto = this.productoService.create(createProductoDto);
     return producto;
   }

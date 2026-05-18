@@ -10,9 +10,9 @@ export class CreateStockDto {
   variante_id?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ?? '')
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
-  sucursal_id?: string;
+  sucursal_id?: string | null;
 
   @IsOptional()
   @IsNumber()
@@ -22,4 +22,10 @@ export class CreateStockDto {
   @IsNumber()
   @Min(0)
   cantidad_minima?: number;
+}
+
+// DTO para ajustar stock (sumar/restar cantidades por ventas/compras)
+export class AjustarStockDto {
+  @IsNumber()
+  cantidad!: number; // positivo para sumar, negativo para restar
 }

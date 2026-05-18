@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AtributoVariante } from './entities/atributo-variante.entity';
+import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
 import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
-import { Imagen } from './entities/imagen.entity';
-import { Lote } from './entities/lote.entity';
-import { Oferta } from './entities/oferta.entity';
+import { Imagen } from '../imagen/entities/imagen.entity';
+import { Lote } from '../lote/entities/lote.entity';
+import { Oferta } from '../oferta/entities/oferta.entity';
 import { Producto } from './entities/producto.entity';
-import { Stock } from './entities/stock.entity';
-import { Variante } from './entities/variante.entity';
+import { Stock } from '../stock/entities/stock.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { ProductoController } from './producto.controller';
 import { ProductoService } from './producto.service';
 
@@ -28,4 +28,4 @@ import { ProductoService } from './producto.service';
   providers: [ProductoService],
   exports: [ProductoService], // exportamos por si otros módulos (ventas, pos) necesitan consultar
 })
-export class ProductosModule {}
+export class ProductoModule {}

@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AtributoVariante } from '../producto/entities/atributo-variante.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { AtributoVariante } from './entities/atributo-variante.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateAtributoVarianteDto } from './dto/create-atributo-variante.dto';
 import { UpdateAtributoVarianteDto } from './dto/update-atributo-variante.dto';
 

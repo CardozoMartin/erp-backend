@@ -7,8 +7,8 @@ import { VentasModulo } from './entities/ventas-modulo.entity';
 import { VentaItem } from './entities/venta-item.entity';
 import { VentaPago } from './entities/venta-pago.entity';
 import { VentaHistorial } from './entities/venta-historial.entity';
-import { Stock } from '../producto/entities/stock.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { Stock } from '../stock/entities/stock.entity';
+import { Variante } from '../variante/entities/variante.entity';
 
 @Module({
   imports: [

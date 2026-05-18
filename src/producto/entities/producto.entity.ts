@@ -9,11 +9,11 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ProductoCategoria } from '../../producto-categoria/entities/producto-categoria.entity';
-import { Variante } from './variante.entity';
-import { Stock } from './stock.entity';
-import { Lote } from './lote.entity';
-import { Imagen } from './imagen.entity';
-import { Oferta } from './oferta.entity';
+import { Variante } from '../../variante/entities/variante.entity';
+import { Stock } from '../../stock/entities/stock.entity';
+import { Lote } from '../../lote/entities/lote.entity';
+import { Imagen } from '../../imagen/entities/imagen.entity';
+import { Oferta } from '../../oferta/entities/oferta.entity';
 
 export enum UnidadVenta {
   UNIDAD = 'UNIDAD',
@@ -31,8 +31,8 @@ export class Producto {
   @Column({ length: 200 })
   nombre!: string;
 
-  @Column({ length: 100, unique: true, nullable: true })
-  codigo_barras!: string;
+  @Column({ type: 'varchar', length: 100, unique: true, nullable: true })
+  codigo_barras!: string | null;
 
   @Column({ type: 'text', nullable: true })
   descripcion!: string;

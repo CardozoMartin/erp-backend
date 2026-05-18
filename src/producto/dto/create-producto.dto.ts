@@ -10,11 +10,12 @@ import {
   IsArray,
   ValidateNested,
   IsNotEmpty,
+  IsDate,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { UnidadVenta } from '../entities/producto.entity';
-import { RolImagen } from '../entities/imagen.entity';
+import { RolImagen } from '../../imagen/entities/imagen.entity';
 
 // ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
@@ -38,8 +39,7 @@ export class CreateVarianteDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
-  precio_extra?: number; // precio adicional sobre precio_base
+  precio_extra?: number; // precio adicional sobre precio_base (puede ser negativo para descuentos)
 
   @IsOptional()
   @IsBoolean()
@@ -105,6 +105,7 @@ export class CreateLoteDto {
   @MaxLength(100)
   numero_lote?: string;
 
+  @IsDate()
   @Type(() => Date)
   fecha_vencimiento!: Date;
 
@@ -147,9 +148,11 @@ export class CreateOfertaDto {
   @Min(0)
   precio_oferta!: number;
 
+  @IsDate()
   @Type(() => Date)
   fecha_inicio!: Date;
 
+  @IsDate()
   @Type(() => Date)
   fecha_fin!: Date;
 
@@ -168,7 +171,7 @@ export class CreateProductoDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  codigo_barras?: string;
+  codigo_barras?: string | null;
 
   @IsOptional()
   @IsString()

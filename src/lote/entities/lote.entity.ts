@@ -7,8 +7,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Producto } from './producto.entity';
-import { Variante } from './variante.entity';
+import { Producto } from '../../producto/entities/producto.entity';
+import { Variante } from '../../variante/entities/variante.entity';
 
 // ─── Un producto puede tener múltiples lotes, cada uno con su vencimiento ───
 // Ejemplo: yogur de frutilla → lote A vence 15/08, lote B vence 01/09

@@ -6,8 +6,8 @@ import {
   JoinColumn,
   CreateDateColumn,
 } from 'typeorm';
-import { Producto } from './producto.entity';
-import { Variante } from './variante.entity';
+import { Producto } from '../../producto/entities/producto.entity';
+import { Variante } from '../../variante/entities/variante.entity';
 
 export enum RolImagen {
   PRINCIPAL = 'PRINCIPAL',
@@ -51,6 +51,9 @@ export class Imagen {
   url!: string;
 
   //Metadatos opcionales
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  storage_key!: string | null;
+
   @Column({ type: 'varchar', length: 200, nullable: true })
   alt_text!: string | null;
 

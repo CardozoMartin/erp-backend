@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Lote } from '../producto/entities/lote.entity';
+import { Lote } from './entities/lote.entity';
 import { Producto } from '../producto/entities/producto.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateLoteDto } from './dto/create-lote.dto';
 import { UpdateLoteDto } from './dto/update-lote.dto';
 

@@ -2,18 +2,21 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ProductosModule } from './producto/producto.module';
 import { ProductoCategoriaModule } from './producto-categoria/producto-categoria.module';
-import { StockModule } from './stock/stock.module';
-import { LoteModule } from './lote/lote.module';
-import { ImagenModule } from './imagen/imagen.module';
-import { OfertaModule } from './oferta/oferta.module';
-import { VarianteModule } from './variante/variante.module';
-import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
 import { VentasModuloModule } from './ventas-modulo/ventas-modulo.module';
 import { PagosModuleModule } from './pagos-module/pagos-module.module';
 import { RetirosModuleModule } from './retiros-module/retiros-module.module';
 import { SucursalModule } from './sucursal/sucursal.module';
+
+// Modulos del dominio de Producto
+import { ProductoModule } from './producto/producto.module';
+import { StockModule } from './stock/stock.module';
+import { OfertaModule } from './oferta/oferta.module';
+import { VarianteModule } from './variante/variante.module';
+import { ImagenModule } from './imagen/imagen.module';
+import { LoteModule } from './lote/lote.module';
+import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -28,7 +31,7 @@ import { SucursalModule } from './sucursal/sucursal.module';
       synchronize: true,
       autoLoadEntities: true,
     }),
-    ProductosModule,
+    ProductoModule,
     ProductoCategoriaModule,
     StockModule,
     LoteModule,
@@ -40,6 +43,7 @@ import { SucursalModule } from './sucursal/sucursal.module';
     PagosModuleModule,
     RetirosModuleModule,
     SucursalModule,
+    CloudinaryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

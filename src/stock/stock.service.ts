@@ -6,10 +6,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { Producto } from '../producto/entities/producto.entity';
-import { Stock } from '../producto/entities/stock.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { Stock } from './entities/stock.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
+import { AjustarStockDto } from './dto/create-stock.dto';
 
 @Injectable()
 export class StockService {
@@ -68,6 +69,18 @@ export class StockService {
     return this.stockRepo.find({ relations: ['producto', 'variante'] });
   }
 
+  async findByProducto(productoId: string): Promise<Stock[]> {
+    const producto = await this.productoRepo.findOne({
+      where: { id: productoId },
+    });
+    if (!producto) throw new NotFoundException('Producto no encontrado');
+
+    return this.stockRepo.find({
+      where: { producto_id: productoId },
+      relations: ['variante'],
+    });
+  }
+
   async findOneOrFail(id: string): Promise<Stock> {
     const stock = await this.stockRepo.findOne({
       where: { id },
@@ -80,6 +93,17 @@ export class StockService {
   async update(id: string, dto: UpdateStockDto): Promise<Stock> {
     const stock = await this.findOneOrFail(id);
     Object.assign(stock, dto);
+    return this.stockRepo.save(stock);
+  }
+
+  // Suma o resta del stock actual (para movimientos de ventas/compras)
+  async ajustar(id: string, dto: AjustarStockDto): Promise<Stock> {
+    const stock = await this.findOneOrFail(id);
+    const nuevaCantidad = Number(stock.cantidad) + dto.cantidad;
+    if (nuevaCantidad < 0) {
+      throw new BadRequestException('El stock no puede quedar negativo');
+    }
+    stock.cantidad = nuevaCantidad;
     return this.stockRepo.save(stock);
   }
 

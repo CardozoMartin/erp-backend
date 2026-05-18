@@ -5,7 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { Variante } from './variante.entity';
+import { Variante } from '../../variante/entities/variante.entity';
 
 @Entity('atributos_variante')
 export class AtributoVariante {
