@@ -17,6 +17,7 @@ import { ImagenModule } from './imagen/imagen.module';
 import { LoteModule } from './lote/lote.module';
 import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { ProductoPreciosModule } from './producto_precios/producto_precios.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     RetirosModuleModule,
     SucursalModule,
     CloudinaryModule,
+    ProductoPreciosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

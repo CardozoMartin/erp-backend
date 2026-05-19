@@ -16,9 +16,23 @@ import { Transform, Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import { UnidadVenta } from '../entities/producto.entity';
 import { RolImagen } from '../../imagen/entities/imagen.entity';
+import { CreateProductoPrecioDto } from '../../producto_precios/dto/create-producto_precio.dto';
 
 // ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  tipo!: string; // 'color', 'talle', 'sabor', 'presentacion', etc.
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  valor!: string; // 'Rojo', 'XL', 'Frutilla', etc.
+}
+
+// ─── DTO de atributo de producto ───
+export class CreateAtributoProductoDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
@@ -223,6 +237,12 @@ export class CreateProductoDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
+  @Type(() => CreateAtributoProductoDto)
+  atributos?: CreateAtributoProductoDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => CreateStockDto)
   stock?: CreateStockDto[];
 
@@ -243,6 +263,12 @@ export class CreateProductoDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOfertaDto)
   ofertas?: CreateOfertaDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProductoPrecioDto)
+  precios?: CreateProductoPrecioDto[];
 }
 
 // ─── DTO de actualización (todos opcionales) ───

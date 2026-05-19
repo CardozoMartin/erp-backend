@@ -14,6 +14,8 @@ import { Stock } from '../../stock/entities/stock.entity';
 import { Lote } from '../../lote/entities/lote.entity';
 import { Imagen } from '../../imagen/entities/imagen.entity';
 import { Oferta } from '../../oferta/entities/oferta.entity';
+import { AtributoProducto } from '../../atributo-producto/entities/atributo-producto.entity';
+import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
 
 export enum UnidadVenta {
   UNIDAD = 'UNIDAD',
@@ -46,17 +48,20 @@ export class Producto {
   @Column({ default: false })
   activo_web!: boolean;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   precio_base!: number;
+
+  @OneToMany(() => ProductoPrecio, (precio) => precio.producto)
+  precios!: ProductoPrecio[];
 
   @Column({ type: 'enum', enum: UnidadVenta, default: UnidadVenta.UNIDAD })
   unidad_venta!: UnidadVenta;
 
   @Column({ default: false })
-  tiene_variantes!: boolean; 
+  tiene_variantes!: boolean;
 
   @Column({ default: false })
-  tiene_vencimiento!: boolean; 
+  tiene_vencimiento!: boolean;
 
   @Column({ default: false })
   es_fraccionable!: boolean;
@@ -71,6 +76,11 @@ export class Producto {
 
   @OneToMany(() => Variante, (variante) => variante.producto, { cascade: true })
   variantes!: Variante[];
+
+  @OneToMany(() => AtributoProducto, (atributo) => atributo.producto, {
+    cascade: true,
+  })
+  atributos!: AtributoProducto[];
 
   @OneToMany(() => Stock, (stock) => stock.producto)
   stock!: Stock[];

@@ -11,6 +11,8 @@ import {
 import { ProductoCategoriaService } from './producto-categoria.service';
 import { CreateProductoCategoriaDto } from './dto/create-producto-categoria.dto';
 import { UpdateProductoCategoriaDto } from './dto/update-producto-categoria.dto';
+import { CreateCategoriaAtributoDto } from './dto/create-categoria-atributo.dto';
+import { UpdateCategoriaAtributoDto } from './dto/update-categoria-atributo.dto';
 
 @Controller('producto-categoria')
 export class ProductoCategoriaController {
@@ -31,9 +33,12 @@ export class ProductoCategoriaController {
   @Get('activas')
   findAllActivas(
     @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10'
+    @Query('limit') limit: string = '10',
   ) {
-    return this.productoCategoriaService.findAllActivas(Number(page), Number(limit));
+    return this.productoCategoriaService.findAllActivas(
+      Number(page),
+      Number(limit),
+    );
   }
 
   @Get(':id')
@@ -57,5 +62,38 @@ export class ProductoCategoriaController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.productoCategoriaService.remove(id);
+  }
+
+  // ─── Endpoints para atributos ───
+  @Post(':id/atributos')
+  addAtributo(
+    @Param('id') categoriaId: string,
+    @Body() createAtributoDto: CreateCategoriaAtributoDto,
+  ) {
+    return this.productoCategoriaService.addAtributo(
+      categoriaId,
+      createAtributoDto,
+    );
+  }
+
+  @Get(':id/atributos')
+  getAtributosByCategoria(@Param('id') categoriaId: string) {
+    return this.productoCategoriaService.getAtributosByCategoria(categoriaId);
+  }
+
+  @Patch('atributos/:atributoId')
+  updateAtributo(
+    @Param('atributoId') atributoId: string,
+    @Body() updateAtributoDto: UpdateCategoriaAtributoDto,
+  ) {
+    return this.productoCategoriaService.updateAtributo(
+      atributoId,
+      updateAtributoDto,
+    );
+  }
+
+  @Delete('atributos/:atributoId')
+  removeAtributo(@Param('atributoId') atributoId: string) {
+    return this.productoCategoriaService.removeAtributo(atributoId);
   }
 }

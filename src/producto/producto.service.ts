@@ -13,8 +13,11 @@ import { Imagen } from '../imagen/entities/imagen.entity';
 import { Oferta } from '../oferta/entities/oferta.entity';
 import { Stock } from '../stock/entities/stock.entity';
 import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
+import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
 import { Variante } from '../variante/entities/variante.entity';
 import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
+import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
+import { ProductoPreciosService } from 'src/producto_precios/producto_precios.service';
 
 @Injectable()
 export class ProductoService {
@@ -28,6 +31,9 @@ export class ProductoService {
 
     @InjectRepository(AtributoVariante)
     private readonly atributoRepo: Repository<AtributoVariante>,
+
+    @InjectRepository(AtributoProducto)
+    private readonly atributoProductoRepo: Repository<AtributoProducto>,
 
     @InjectRepository(Stock)
     private readonly stockRepo: Repository<Stock>,
@@ -44,6 +50,7 @@ export class ProductoService {
     @InjectRepository(ProductoCategoria)
     private readonly categoriaRepo: Repository<ProductoCategoria>,
 
+    private readonly productoPrecioService: ProductoPreciosService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -242,9 +249,25 @@ export class ProductoService {
         lotes: undefined,
         imagenes: undefined,
         ofertas: undefined,
+        atributos: undefined,
       });
 
       await queryRunner.manager.save(producto);
+
+      // Si el producto no tiene variantes y tiene atributos a nivel producto, los guardamos
+      if (
+        !tieneVariantes &&
+        createProductoDto.atributos &&
+        createProductoDto.atributos.length > 0
+      ) {
+        for (const attrDto of createProductoDto.atributos) {
+          const atributo = this.atributoProductoRepo.create({
+            ...attrDto,
+            producto: producto,
+          });
+          await queryRunner.manager.save(atributo);
+        }
+      }
 
       // Si el producto tiene relaciones a nivel producto, las creamos primero
       if (createProductoDto.stock && createProductoDto.stock.length > 0) {
@@ -365,6 +388,15 @@ export class ProductoService {
           }
         }
       }
+      //si el producto viene con el precio en el DTO, lo guardamos en la tabla de precios
+      if (createProductoDto.precios && createProductoDto.precios.length > 0) {
+        for (const precioDto of createProductoDto.precios) {
+          await this.productoPrecioService.create({
+            ...precioDto,
+            producto_id: producto.id,
+          });
+        }
+      }
       await queryRunner.commitTransaction();
       return this.findOne(producto.id);
     } catch (error) {
@@ -385,6 +417,8 @@ export class ProductoService {
         'lotes',
         'imagenes',
         'ofertas',
+        'atributos',
+        'precios',
       ],
       order: { nombre: 'ASC' },
       skip: (page - 1) * limit,
@@ -411,6 +445,8 @@ export class ProductoService {
         'lotes',
         'imagenes',
         'ofertas',
+        'atributos',
+        'precios',
       ],
     });
     if (!producto) {
@@ -485,8 +521,15 @@ export class ProductoService {
 
     try {
       // 5. Actualizar campos del producto (sin las relaciones)
-      const { variantes, stock, lotes, imagenes, ofertas, ...productoData } =
-        updateProductoDto;
+      const {
+        variantes,
+        stock,
+        lotes,
+        imagenes,
+        ofertas,
+        atributos,
+        ...productoData
+      } = updateProductoDto;
       Object.assign(producto, productoData);
       await queryRunner.manager.save(producto);
 
@@ -560,6 +603,22 @@ export class ProductoService {
               variante_id: null,
             } as Partial<Oferta>);
             await queryRunner.manager.save(o);
+          }
+        }
+      }
+
+      // 9.5 Sync atributos a nivel producto
+      if (atributos !== undefined) {
+        await queryRunner.manager.delete(AtributoProducto, {
+          producto_id: id,
+        });
+        if (atributos && atributos.length > 0) {
+          for (const attrDto of atributos) {
+            const attr = this.atributoProductoRepo.create({
+              ...attrDto,
+              producto: producto,
+            });
+            await queryRunner.manager.save(attr);
           }
         }
       }

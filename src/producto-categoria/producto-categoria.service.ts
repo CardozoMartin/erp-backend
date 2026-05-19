@@ -1,15 +1,24 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProductoCategoria } from './entities/producto-categoria.entity';
+import { CreateCategoriaAtributoDto } from './dto/create-categoria-atributo.dto';
 import { CreateProductoCategoriaDto } from './dto/create-producto-categoria.dto';
+import { UpdateCategoriaAtributoDto } from './dto/update-categoria-atributo.dto';
 import { UpdateProductoCategoriaDto } from './dto/update-producto-categoria.dto';
+import { CategoriaAtributoDef } from './entities/categoria-atributoDef';
+import { ProductoCategoria } from './entities/producto-categoria.entity';
 
 @Injectable()
 export class ProductoCategoriaService {
   constructor(
     @InjectRepository(ProductoCategoria)
     private categoriaRepository: Repository<ProductoCategoria>,
+    @InjectRepository(CategoriaAtributoDef)
+    private atributoRepository: Repository<CategoriaAtributoDef>,
   ) {}
 
   async create(createProductoCategoriaDto: CreateProductoCategoriaDto) {
@@ -33,7 +42,7 @@ export class ProductoCategoriaService {
 
   async findAll() {
     return await this.categoriaRepository.find({
-      relations: ['padre', 'hijos'],
+      relations: ['padre', 'hijos', 'atributos'],
       order: { nombre: 'ASC' },
     });
   }
@@ -42,7 +51,7 @@ export class ProductoCategoriaService {
   async findAllActivas(page: number = 1, limit: number = 10) {
     const [categorias, total] = await this.categoriaRepository.findAndCount({
       where: { activo: true },
-      relations: ['padre', 'hijos'],
+      relations: ['padre', 'hijos', 'atributos'],
       order: { nombre: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -62,7 +71,7 @@ export class ProductoCategoriaService {
   async findOne(id: string) {
     const categoria = await this.categoriaRepository.findOne({
       where: { id },
-      relations: ['padre', 'hijos'],
+      relations: ['padre', 'hijos', 'atributos'],
     });
     if (!categoria) {
       throw new NotFoundException(`Categoría con ID ${id} no encontrada`);
@@ -107,5 +116,65 @@ export class ProductoCategoriaService {
   async remove(id: string) {
     const categoria = await this.findOne(id);
     return await this.categoriaRepository.remove(categoria);
+  }
+
+  // ─── Métodos para manejar atributos ───
+  async addAtributo(
+    categoriaId: string,
+    createAtributoDto: CreateCategoriaAtributoDto,
+  ) {
+    const categoria = await this.findOne(categoriaId);
+    if (!categoria) {
+      throw new NotFoundException(
+        `Categoría con ID ${categoriaId} no encontrada`,
+      );
+    }
+
+    const nuevoAtributo = this.atributoRepository.create({
+      ...createAtributoDto,
+      categoria,
+    });
+    return await this.atributoRepository.save(nuevoAtributo);
+  }
+
+  async updateAtributo(
+    atributoId: string,
+    updateAtributoDto: UpdateCategoriaAtributoDto,
+  ) {
+    const atributo = await this.atributoRepository.findOne({
+      where: { id: atributoId },
+    });
+    if (!atributo) {
+      throw new NotFoundException(
+        `Atributo con ID ${atributoId} no encontrado`,
+      );
+    }
+
+    const atributoActualizado = this.atributoRepository.merge(
+      atributo,
+      updateAtributoDto,
+    );
+    return await this.atributoRepository.save(atributoActualizado);
+  }
+
+  async removeAtributo(atributoId: string) {
+    const atributo = await this.atributoRepository.findOne({
+      where: { id: atributoId },
+    });
+    if (!atributo) {
+      throw new NotFoundException(
+        `Atributo con ID ${atributoId} no encontrado`,
+      );
+    }
+    return await this.atributoRepository.remove(atributo);
+  }
+
+  async getAtributosByCategoria(categoriaId: string) {
+    await this.findOne(categoriaId); // Validar que la categoría existe
+
+    return await this.atributoRepository.find({
+      where: { categoria_id: categoriaId },
+      order: { orden: 'ASC' },
+    });
   }
 }
