@@ -8,12 +8,18 @@ import { Repository } from 'typeorm';
 import { CreateProductoPrecioDto } from './dto/create-producto_precio.dto';
 import { UpdateProductoPrecioDto } from './dto/update-producto_precio.dto';
 import { ProductoPrecio } from './entities/producto_precio.entity';
+import { MarcaProducto } from 'src/marca_productos/entities/marca_producto.entity';
+import { Producto } from 'src/producto/entities/producto.entity';
 
 @Injectable()
 export class ProductoPreciosService {
   constructor(
     @InjectRepository(ProductoPrecio)
     private readonly productoPrecioRepository: Repository<ProductoPrecio>,
+    @InjectRepository(MarcaProducto)
+    private readonly marcaProductoRepository: Repository<MarcaProducto>,
+    @InjectRepository(Producto)
+    private readonly productoRepository: Repository<Producto>,
   ) {}
 
   //Servicio para crear un nuevo precio de producto
@@ -88,5 +94,36 @@ export class ProductoPreciosService {
       throw new NotFoundException(`Precio con ID ${id} no encontrado`);
     }
     await this.productoPrecioRepository.remove(precio);
+  }
+
+  //servicio para aumentar el precio de los productos por un porcentaje dado
+  async aumentarPreciosPorcentaje(
+    productoId: string,
+    porcentaje: number,
+  ): Promise<void> {
+    const precios = await this.findByProducto(productoId);
+    for (const precio of precios) {
+      precio.precio = precio.precio * (1 + porcentaje / 100);
+      await this.productoPrecioRepository.save(precio);
+    }
+  }
+
+  //servicio para aumentar el precio de los productos segun la marca del producto
+  async aumentarPreciosPorMarca(
+    marcaId: string,
+    porcentaje: number,
+  ): Promise<void> {
+    const marca = await this.marcaProductoRepository.findOne({
+      where: { id: marcaId },
+    });
+    if (!marca) {
+      throw new NotFoundException(`Marca con ID ${marcaId} no encontrada`);
+    }
+    const productos = await this.productoRepository.find({
+      where: { marca_id: marcaId },
+    });
+    for (const producto of productos) {
+      await this.aumentarPreciosPorcentaje(producto.id, porcentaje);
+    }
   }
 }

@@ -16,6 +16,7 @@ import { Imagen } from '../../imagen/entities/imagen.entity';
 import { Oferta } from '../../oferta/entities/oferta.entity';
 import { AtributoProducto } from '../../atributo-producto/entities/atributo-producto.entity';
 import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
+import { MarcaProducto } from 'src/marca_productos/entities/marca_producto.entity';
 
 export enum UnidadVenta {
   UNIDAD = 'UNIDAD',
@@ -93,6 +94,14 @@ export class Producto {
 
   @OneToMany(() => Oferta, (oferta) => oferta.producto, { cascade: true })
   ofertas!: Oferta[];
+
+  //marca Productos
+  @ManyToOne(() => MarcaProducto, { eager: true, nullable: true })
+  @JoinColumn({ name: 'marca_id' })
+  marca!: MarcaProducto | null;
+
+  @Column({ nullable: true })
+  marca_id!: string | null;
 
   @CreateDateColumn()
   created_at!: Date;
