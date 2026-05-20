@@ -97,9 +97,6 @@ export class Producto {
 
   //marca Productos
   @ManyToOne(() => MarcaProducto, (marca) => marca.productos, {
-   
-   ,
- 
     eager: true,
     nullable: true,
   })

@@ -6,19 +6,18 @@ export class MarcaProducto {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   nombre!: string;
 
-  @Column({ nullable: true })
-  descripcion!: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  descripcion!: string | null;
 
-  @Column({ nullable: true })
-  logo_url!: string;
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  logo_url!: string | null;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   activo!: boolean;
 
   @OneToMany(() => Producto, (producto) => producto.marca)
   productos!: Producto[];
-
 }

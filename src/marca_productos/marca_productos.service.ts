@@ -21,12 +21,22 @@ export class MarcaProductosService {
     return this.marcaProductoRepo.save(marcaProducto);
   }
 
-  async findAll() {
-    return await this.marcaProductoRepo.find();
+  async findAll(page: number = 1, limit: number = 30) {
+    const [result, total] = await this.marcaProductoRepo.findAndCount({
+      order: { nombre: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return {
+      data: result,
+      total,
+      page,
+      last_page: Math.ceil(total / limit),
+    };
   }
 
   async findOneName(nombre: string) {
-    const marcaProducto =await this.marcaProductoRepo.findOneBy({ nombre });
+    const marcaProducto = await this.marcaProductoRepo.findOneBy({ nombre });
     return marcaProducto;
   }
 

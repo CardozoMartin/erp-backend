@@ -432,6 +432,7 @@ export class ProductoService {
         'ofertas',
         'atributos',
         'precios',
+        'marca',
       ],
       order: { nombre: 'ASC' },
       skip: (page - 1) * limit,
@@ -460,6 +461,7 @@ export class ProductoService {
         'ofertas',
         'atributos',
         'precios',
+        'marca',
       ],
     });
     if (!producto) {
@@ -523,6 +525,16 @@ export class ProductoService {
       });
       if (!categoria) {
         throw new BadRequestException('La categoría especificada no existe');
+      }
+    }
+
+    // Validar marca si se envía
+    if (updateProductoDto.marca_id) {
+      const marca = await this.marcaRepo.findOne({
+        where: { id: updateProductoDto.marca_id },
+      });
+      if (!marca) {
+        throw new BadRequestException('La marca especificada no existe');
       }
     }
     //si el producto tiene una oferta  ?

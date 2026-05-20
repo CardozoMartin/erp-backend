@@ -1,16 +1,18 @@
-import { IsBoolean, IsString } from "class-validator";
+import { IsBoolean, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class CreateMarcaProductoDto {
+  @IsString()
+  nombre: string;
 
-    @IsString()
-    nombre!: string;
+  @IsString()
+  @IsOptional()
+  descripcion?: string;
 
-    @IsString()
-    descripcion!: string;
+  @IsUrl()
+  @IsOptional()
+  logo_url?: string;
 
-    @IsString()
-    logo_url!: string;
-
-    @IsBoolean()
-    activo!: boolean;
+  @IsBoolean()
+  @IsOptional()  // 👈 esto es lo que falta
+  activo?: boolean;
 }
