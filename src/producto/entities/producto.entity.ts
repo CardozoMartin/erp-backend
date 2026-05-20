@@ -96,7 +96,13 @@ export class Producto {
   ofertas!: Oferta[];
 
   //marca Productos
-  @ManyToOne(() => MarcaProducto, { eager: true, nullable: true })
+  @ManyToOne(() => MarcaProducto, (marca) => marca.productos, {
+   
+   ,
+ 
+    eager: true,
+    nullable: true,
+  })
   @JoinColumn({ name: 'marca_id' })
   marca!: MarcaProducto | null;
 

@@ -1,22 +1,22 @@
+import { PartialType } from '@nestjs/mapped-types';
+import { Transform, Type } from 'class-transformer';
 import {
-  IsString,
-  IsOptional,
+  IsArray,
   IsBoolean,
-  IsNumber,
+  IsDate,
   IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
   IsUUID,
   MaxLength,
   Min,
-  IsArray,
   ValidateNested,
-  IsNotEmpty,
-  IsDate,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-import { PartialType } from '@nestjs/mapped-types';
-import { UnidadVenta } from '../entities/producto.entity';
 import { RolImagen } from '../../imagen/entities/imagen.entity';
 import { CreateProductoPrecioDto } from '../../producto_precios/dto/create-producto_precio.dto';
+import { UnidadVenta } from '../entities/producto.entity';
 
 // ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
@@ -226,6 +226,10 @@ export class CreateProductoDto {
   @IsOptional()
   @IsUUID()
   categoria_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  marca_id?: string;
 
   // ─── Variantes opcionales al crear ───
   @IsOptional()

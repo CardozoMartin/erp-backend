@@ -3,21 +3,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ProductoPreciosService } from 'src/producto_precios/producto_precios.service';
+import { DataSource, Repository } from 'typeorm';
+import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
+import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
+import { Imagen } from '../imagen/entities/imagen.entity';
+import { Lote } from '../lote/entities/lote.entity';
+import { MarcaProducto } from '../marca_productos/entities/marca_producto.entity';
+import { Oferta } from '../oferta/entities/oferta.entity';
+import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
+import { Stock } from '../stock/entities/stock.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { Producto } from './entities/producto.entity';
-import { DataSource, Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Lote } from '../lote/entities/lote.entity';
-import { Imagen } from '../imagen/entities/imagen.entity';
-import { Oferta } from '../oferta/entities/oferta.entity';
-import { Stock } from '../stock/entities/stock.entity';
-import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
-import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
-import { Variante } from '../variante/entities/variante.entity';
-import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
-import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
-import { ProductoPreciosService } from 'src/producto_precios/producto_precios.service';
 
 @Injectable()
 export class ProductoService {
@@ -49,6 +49,9 @@ export class ProductoService {
 
     @InjectRepository(ProductoCategoria)
     private readonly categoriaRepo: Repository<ProductoCategoria>,
+
+    @InjectRepository(MarcaProducto)
+    private readonly marcaRepo: Repository<MarcaProducto>,
 
     private readonly productoPrecioService: ProductoPreciosService,
     private readonly dataSource: DataSource,
@@ -102,6 +105,16 @@ export class ProductoService {
       });
       if (!categoria) {
         throw new BadRequestException('La categoría especificada no existe');
+      }
+    }
+
+    //3.1.- validamos que la marca exista si se envio marca_id
+    if (createProductoDto.marca_id) {
+      const marca = await this.marcaRepo.findOne({
+        where: { id: createProductoDto.marca_id },
+      });
+      if (!marca) {
+        throw new BadRequestException('La marca especificada no existe');
       }
     }
 
