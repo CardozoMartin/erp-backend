@@ -17,6 +17,7 @@ import {
 import { RolImagen } from '../../imagen/entities/imagen.entity';
 import { CreateProductoPrecioDto } from '../../producto_precios/dto/create-producto_precio.dto';
 import { UnidadVenta } from '../entities/producto.entity';
+import { CreateStockDto, UpdateStockDto } from '../../stock/dto/create-stock.dto';
 
 // ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
@@ -90,21 +91,50 @@ export class CreateVarianteDto {
   ofertas?: CreateOfertaDto[];
 }
 
-// ─── DTO para registrar stock (producto o variante) ───
-export class CreateStockDto {
+// ─── DTO de variante para ACTUALIZACIÓN ───
+export class UpdateVarianteDto {
   @IsOptional()
-  @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
-  sucursal_id?: string | null;
+  @MaxLength(100)
+  sku?: string;
 
   @IsOptional()
   @IsNumber()
-  cantidad?: number;
+  precio_extra?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  cantidad_minima?: number;
+  @IsBoolean()
+  activo?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateAtributoVarianteDto)
+  atributos?: CreateAtributoVarianteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateStockDto)
+  stock?: UpdateStockDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateLoteDto)
+  lotes?: CreateLoteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateImagenDto)
+  imagenes?: CreateImagenDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOfertaDto)
+  ofertas?: CreateOfertaDto[];
 }
 
 // ─── DTO para registrar lote con vencimiento ───
@@ -275,8 +305,106 @@ export class CreateProductoDto {
   precios?: CreateProductoPrecioDto[];
 }
 
-// ─── DTO de actualización (todos opcionales) ───
-export class UpdateProductoDto extends PartialType(CreateProductoDto) {}
+// ─── DTO de actualización con variantes actualizables ───
+export class UpdateProductoDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  codigo_barras?: string | null;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  activo_pos?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  activo_web?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio_base?: number;
+
+  @IsOptional()
+  @IsEnum(UnidadVenta)
+  unidad_venta?: UnidadVenta;
+
+  @IsOptional()
+  @IsBoolean()
+  tiene_variantes?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  tiene_vencimiento?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  es_fraccionable?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  categoria_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  marca_id?: string;
+
+  // ─── Variantes con DTOs de actualización ───
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateVarianteDto)
+  variantes?: UpdateVarianteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateAtributoProductoDto)
+  atributos?: CreateAtributoProductoDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateStockDto)
+  stock?: UpdateStockDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateLoteDto)
+  lotes?: CreateLoteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateImagenDto)
+  imagenes?: CreateImagenDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOfertaDto)
+  ofertas?: CreateOfertaDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProductoPrecioDto)
+  precios?: CreateProductoPrecioDto[];
+}
 
 // ─── DTO de filtros para listado/búsqueda ───
 export class FiltrosProductoDto {
