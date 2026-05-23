@@ -17,35 +17,35 @@ import {
 import { RolImagen } from '../../imagen/entities/imagen.entity';
 import { CreateProductoPrecioDto } from '../../producto_precios/dto/create-producto_precio.dto';
 import { UnidadVenta } from '../entities/producto.entity';
-import { CreateStockDto, UpdateStockDto } from '../../stock/dto/create-stock.dto';
+import {
+  CreateStockDto,
+  UpdateStockDto,
+} from '../../stock/dto/create-stock.dto';
 
-// ─── DTO de atributo de variante ───
 export class CreateAtributoVarianteDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  tipo!: string; // 'color', 'talle', 'sabor', 'presentacion', etc.
+  tipo!: string;
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  valor!: string; // 'Rojo', 'XL', 'Frutilla', etc.
+  valor!: string;
 }
 
-// ─── DTO de atributo de producto ───
 export class CreateAtributoProductoDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  tipo!: string; // 'color', 'talle', 'sabor', 'presentacion', etc.
+  tipo!: string;
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  valor!: string; // 'Rojo', 'XL', 'Frutilla', etc.
+  valor!: string;
 }
 
-// ─── DTO de variante dentro de creación de producto ───
 export class CreateVarianteDto {
   @IsOptional()
   @IsString()
@@ -54,7 +54,7 @@ export class CreateVarianteDto {
 
   @IsOptional()
   @IsNumber()
-  precio_extra?: number; // precio adicional sobre precio_base (puede ser negativo para descuentos)
+  precio_extra?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -91,7 +91,6 @@ export class CreateVarianteDto {
   ofertas?: CreateOfertaDto[];
 }
 
-// ─── DTO de variante para ACTUALIZACIÓN ───
 export class UpdateVarianteDto {
   @IsOptional()
   @IsString()

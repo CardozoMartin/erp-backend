@@ -19,6 +19,9 @@ import { AtributoVarianteModule } from './atributo-variante/atributo-variante.mo
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { ProductoPreciosModule } from './producto_precios/producto_precios.module';
 import { MarcaProductosModule } from './marca_productos/marca_productos.module';
+import { EmpleadosModule } from './empleados/empleados.module';
+import { PermisosModule } from './permisos/permisos.module';
+import { RolesModule } from './roles/roles.module';
 
 @Module({
   imports: [
@@ -48,6 +51,9 @@ import { MarcaProductosModule } from './marca_productos/marca_productos.module';
     CloudinaryModule,
     ProductoPreciosModule,
     MarcaProductosModule,
+    EmpleadosModule,
+    PermisosModule,
+    RolesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
