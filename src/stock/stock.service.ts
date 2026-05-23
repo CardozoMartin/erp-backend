@@ -1,11 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { Stock } from '../producto/entities/stock.entity';
 import { Producto } from '../producto/entities/producto.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { UnidadVenta } from '../producto/entities/producto.entity';
+import { Stock } from './entities/stock.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
+import { AjustarStockDto } from './dto/create-stock.dto';
 
 @Injectable()
 export class StockService {
@@ -18,16 +24,45 @@ export class StockService {
     private readonly varianteRepo: Repository<Variante>,
   ) {}
 
+  private validateWholeUnitStock(
+    producto: Pick<Producto, 'unidad_venta' | 'es_fraccionable'>,
+    cantidad: number | undefined,
+    campo: string,
+  ) {
+    if (
+      cantidad !== undefined &&
+      producto.unidad_venta === UnidadVenta.UNIDAD &&
+      !producto.es_fraccionable &&
+      !Number.isInteger(cantidad)
+    ) {
+      throw new BadRequestException(
+        `${campo} debe ser un número entero para productos vendidos por unidad`,
+      );
+    }
+  }
+
   async create(dto: CreateStockDto): Promise<Stock> {
-    const producto = await this.productoRepo.findOne({ where: { id: dto.producto_id } });
+    const producto = await this.productoRepo.findOne({
+      where: { id: dto.producto_id },
+    });
     if (!producto) throw new NotFoundException('Producto no encontrado');
+    this.validateWholeUnitStock(producto, dto.cantidad, 'La cantidad de stock');
+    this.validateWholeUnitStock(
+      producto,
+      dto.cantidad_minima,
+      'La cantidad mínima de stock',
+    );
 
     let variante: Variante | null = null;
     if (dto.variante_id) {
-      variante = await this.varianteRepo.findOne({ where: { id: dto.variante_id } });
+      variante = await this.varianteRepo.findOne({
+        where: { id: dto.variante_id },
+      });
       if (!variante) throw new NotFoundException('Variante no encontrada');
       if (variante.producto_id !== dto.producto_id) {
-        throw new BadRequestException('La variante no pertenece al producto indicado');
+        throw new BadRequestException(
+          'La variante no pertenece al producto indicado',
+        );
       }
     }
 
@@ -35,11 +70,13 @@ export class StockService {
       where: {
         producto_id: dto.producto_id,
         variante_id: dto.variante_id ?? IsNull(),
-        sucursal_id: dto.sucursal_id,
+        sucursal_id: dto.sucursal_id ?? IsNull(),
       },
     });
     if (existente) {
-      throw new BadRequestException('Ya existe stock para ese producto, variante y sucursal');
+      throw new BadRequestException(
+        'Ya existe stock para ese producto, variante y sucursal',
+      );
     }
 
     const stock = this.stockRepo.create({
@@ -47,12 +84,25 @@ export class StockService {
       producto: producto,
       variante: variante ?? undefined,
       variante_id: dto.variante_id ?? null,
+      sucursal_id: dto.sucursal_id ?? null,
     } as Partial<Stock>);
     return this.stockRepo.save(stock);
   }
 
   async findAll(): Promise<Stock[]> {
     return this.stockRepo.find({ relations: ['producto', 'variante'] });
+  }
+
+  async findByProducto(productoId: string): Promise<Stock[]> {
+    const producto = await this.productoRepo.findOne({
+      where: { id: productoId },
+    });
+    if (!producto) throw new NotFoundException('Producto no encontrado');
+
+    return this.stockRepo.find({
+      where: { producto_id: productoId },
+      relations: ['variante'],
+    });
   }
 
   async findOneOrFail(id: string): Promise<Stock> {
@@ -67,6 +117,17 @@ export class StockService {
   async update(id: string, dto: UpdateStockDto): Promise<Stock> {
     const stock = await this.findOneOrFail(id);
     Object.assign(stock, dto);
+    return this.stockRepo.save(stock);
+  }
+
+  // Suma o resta del stock actual (para movimientos de ventas/compras)
+  async ajustar(id: string, dto: AjustarStockDto): Promise<Stock> {
+    const stock = await this.findOneOrFail(id);
+    const nuevaCantidad = Number(stock.cantidad) + dto.cantidad;
+    if (nuevaCantidad < 0) {
+      throw new BadRequestException('El stock no puede quedar negativo');
+    }
+    stock.cantidad = nuevaCantidad;
     return this.stockRepo.save(stock);
   }
 

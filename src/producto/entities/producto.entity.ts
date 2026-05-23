@@ -9,11 +9,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ProductoCategoria } from '../../producto-categoria/entities/producto-categoria.entity';
-import { Variante } from './variante.entity';
-import { Stock } from './stock.entity';
-import { Lote } from './lote.entity';
-import { Imagen } from './imagen.entity';
-import { Oferta } from './oferta.entity';
+import { Variante } from '../../variante/entities/variante.entity';
+import { Stock } from '../../stock/entities/stock.entity';
+import { Lote } from '../../lote/entities/lote.entity';
+import { Imagen } from '../../imagen/entities/imagen.entity';
+import { Oferta } from '../../oferta/entities/oferta.entity';
+import { AtributoProducto } from '../../atributo-producto/entities/atributo-producto.entity';
+import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
+import { MarcaProducto } from 'src/marca_productos/entities/marca_producto.entity';
 
 export enum UnidadVenta {
   UNIDAD = 'UNIDAD',
@@ -31,8 +34,8 @@ export class Producto {
   @Column({ length: 200 })
   nombre!: string;
 
-  @Column({ length: 100, unique: true, nullable: true })
-  codigo_barras!: string;
+  @Column({ type: 'varchar', length: 100, unique: true, nullable: true })
+  codigo_barras!: string | null;
 
   @Column({ type: 'text', nullable: true })
   descripcion!: string;
@@ -46,17 +49,20 @@ export class Producto {
   @Column({ default: false })
   activo_web!: boolean;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   precio_base!: number;
+
+  @OneToMany(() => ProductoPrecio, (precio) => precio.producto)
+  precios!: ProductoPrecio[];
 
   @Column({ type: 'enum', enum: UnidadVenta, default: UnidadVenta.UNIDAD })
   unidad_venta!: UnidadVenta;
 
   @Column({ default: false })
-  tiene_variantes!: boolean; 
+  tiene_variantes!: boolean;
 
   @Column({ default: false })
-  tiene_vencimiento!: boolean; 
+  tiene_vencimiento!: boolean;
 
   @Column({ default: false })
   es_fraccionable!: boolean;
@@ -72,6 +78,11 @@ export class Producto {
   @OneToMany(() => Variante, (variante) => variante.producto, { cascade: true })
   variantes!: Variante[];
 
+  @OneToMany(() => AtributoProducto, (atributo) => atributo.producto, {
+    cascade: true,
+  })
+  atributos!: AtributoProducto[];
+
   @OneToMany(() => Stock, (stock) => stock.producto)
   stock!: Stock[];
 
@@ -83,6 +94,17 @@ export class Producto {
 
   @OneToMany(() => Oferta, (oferta) => oferta.producto, { cascade: true })
   ofertas!: Oferta[];
+
+  //marca Productos
+  @ManyToOne(() => MarcaProducto, (marca) => marca.productos, {
+    eager: true,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'marca_id' })
+  marca!: MarcaProducto | null;
+
+  @Column({ nullable: true })
+  marca_id!: string | null;
 
   @CreateDateColumn()
   created_at!: Date;

@@ -1,9 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Oferta } from '../producto/entities/oferta.entity';
+import { Oferta } from './entities/oferta.entity';
 import { Producto } from '../producto/entities/producto.entity';
-import { Variante } from '../producto/entities/variante.entity';
+import { Variante } from '../variante/entities/variante.entity';
 import { CreateOfertaDto } from './dto/create-oferta.dto';
 import { UpdateOfertaDto } from './dto/update-oferta.dto';
 
@@ -19,19 +23,28 @@ export class OfertaService {
   ) {}
 
   async create(dto: CreateOfertaDto): Promise<Oferta> {
-    const producto = await this.productoRepo.findOne({ where: { id: dto.producto_id } });
+    //verificamos que el producto exista
+    const producto = await this.productoRepo.findOne({
+      where: { id: dto.producto_id },
+    });
     if (!producto) throw new NotFoundException('Producto no encontrado');
-
+    // verificamos que la fecha de inicio no sea mayor a la fecha fin
     if (dto.fecha_inicio > dto.fecha_fin) {
-      throw new BadRequestException('La fecha de inicio no puede ser mayor a la fecha fin');
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser mayor a la fecha fin',
+      );
     }
-
+    //verificamos que el producto tenga activa la oferta o vengan en el dto el campo activo en true
     let variante: Variante | null = null;
     if (dto.variante_id) {
-      variante = await this.varianteRepo.findOne({ where: { id: dto.variante_id } });
+      variante = await this.varianteRepo.findOne({
+        where: { id: dto.variante_id },
+      });
       if (!variante) throw new NotFoundException('Variante no encontrada');
       if (variante.producto_id !== dto.producto_id) {
-        throw new BadRequestException('La variante no pertenece al producto indicado');
+        throw new BadRequestException(
+          'La variante no pertenece al producto indicado',
+        );
       }
     }
 

@@ -1,5 +1,6 @@
+import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { RolImagen } from '../../producto/entities/imagen.entity';
+import { RolImagen } from '../entities/imagen.entity';
 
 export class CreateImagenDto {
   @IsUUID()
@@ -13,9 +14,18 @@ export class CreateImagenDto {
   @IsEnum(RolImagen)
   rol?: RolImagen;
 
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  url!: string;
+  url?: string;
+
+  @IsOptional()
+  @IsString()
+  reemplazar_rol?: string;
+
+  @IsOptional()
+  @IsUUID()
+  reemplazar_imagen_id?: string;
 
   @IsOptional()
   @IsString()
@@ -23,14 +33,17 @@ export class CreateImagenDto {
   alt_text?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   orden?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   ancho_px?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   alto_px?: number;
 }

@@ -1,4 +1,14 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { CategoriaAtributoDef } from './categoria-atributoDef';
 
 @Entity('producto_categorias')
 export class ProductoCategoria {
@@ -29,6 +39,10 @@ export class ProductoCategoria {
 
   @OneToMany(() => ProductoCategoria, (categoria) => categoria.padre)
   hijos!: ProductoCategoria[];
+
+  //Relacion con atributos de categoria
+  @OneToMany(() => CategoriaAtributoDef, (atributo) => atributo.categoria)
+  atributos!: CategoriaAtributoDef[];
 
   @CreateDateColumn()
   created_at!: Date;

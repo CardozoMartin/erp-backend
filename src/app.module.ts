@@ -2,14 +2,23 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ProductosModule } from './producto/producto.module';
 import { ProductoCategoriaModule } from './producto-categoria/producto-categoria.module';
+import { VentasModuloModule } from './ventas-modulo/ventas-modulo.module';
+import { PagosModuleModule } from './pagos-module/pagos-module.module';
+import { RetirosModuleModule } from './retiros-module/retiros-module.module';
+import { SucursalModule } from './sucursal/sucursal.module';
+
+// Modulos del dominio de Producto
+import { ProductoModule } from './producto/producto.module';
 import { StockModule } from './stock/stock.module';
-import { LoteModule } from './lote/lote.module';
-import { ImagenModule } from './imagen/imagen.module';
 import { OfertaModule } from './oferta/oferta.module';
 import { VarianteModule } from './variante/variante.module';
+import { ImagenModule } from './imagen/imagen.module';
+import { LoteModule } from './lote/lote.module';
 import { AtributoVarianteModule } from './atributo-variante/atributo-variante.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { ProductoPreciosModule } from './producto_precios/producto_precios.module';
+import { MarcaProductosModule } from './marca_productos/marca_productos.module';
 
 @Module({
   imports: [
@@ -24,7 +33,7 @@ import { AtributoVarianteModule } from './atributo-variante/atributo-variante.mo
       synchronize: true,
       autoLoadEntities: true,
     }),
-    ProductosModule,
+    ProductoModule,
     ProductoCategoriaModule,
     StockModule,
     LoteModule,
@@ -32,6 +41,13 @@ import { AtributoVarianteModule } from './atributo-variante/atributo-variante.mo
     OfertaModule,
     VarianteModule,
     AtributoVarianteModule,
+    VentasModuloModule,
+    PagosModuleModule,
+    RetirosModuleModule,
+    SucursalModule,
+    CloudinaryModule,
+    ProductoPreciosModule,
+    MarcaProductosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

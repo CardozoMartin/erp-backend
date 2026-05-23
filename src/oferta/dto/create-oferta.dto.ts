@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsDate, IsBoolean, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateOfertaDto {
@@ -13,9 +13,11 @@ export class CreateOfertaDto {
   @Min(0)
   precio_oferta!: number;
 
+  @IsDate()
   @Type(() => Date)
   fecha_inicio!: Date;
 
+  @IsDate()
   @Type(() => Date)
   fecha_fin!: Date;
 

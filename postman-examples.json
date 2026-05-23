@@ -1,0 +1,634 @@
+{
+  "_info": "Ejemplos para Postman — POST /producto",
+  "_nota": "Si necesitás categoria_id real, primero creá una categoría con POST /producto-categoria",
+
+  "1_producto_simple_minimo": {
+    "_descripcion": "Producto con solo los campos obligatorios",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Lapicera Azul",
+      "precio_base": 250
+    }
+  },
+
+  "2_producto_simple_completo": {
+    "_descripcion": "Producto simple con todos los campos opcionales (sin variantes, sin stock, sin lotes)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Cuaderno A4 Rayado",
+      "codigo_barras": "7790001234567",
+      "descripcion": "Cuaderno tapa dura 80 hojas rayadas",
+      "activo": true,
+      "activo_pos": true,
+      "activo_web": false,
+      "precio_base": 1500,
+      "unidad_venta": "UNIDAD",
+      "tiene_variantes": false,
+      "tiene_vencimiento": false,
+      "es_fraccionable": false
+    }
+  },
+
+  "3_producto_con_stock": {
+    "_descripcion": "Producto con stock general (sin sucursal específica)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Mouse Inalámbrico Logitech",
+      "codigo_barras": "7790009876543",
+      "precio_base": 12500,
+      "unidad_venta": "UNIDAD",
+      "stock": [
+        {
+          "cantidad": 50,
+          "cantidad_minima": 5
+        }
+      ]
+    }
+  },
+
+  "4_producto_con_stock_multi_sucursal": {
+    "_descripcion": "Producto con stock en múltiples sucursales",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Teclado Mecánico RGB",
+      "precio_base": 25000,
+      "stock": [
+        {
+          "sucursal_id": null,
+          "cantidad": 100,
+          "cantidad_minima": 10
+        },
+        {
+          "sucursal_id": "sucursal-centro-001",
+          "cantidad": 30,
+          "cantidad_minima": 5
+        },
+        {
+          "sucursal_id": "sucursal-norte-002",
+          "cantidad": 20,
+          "cantidad_minima": 3
+        }
+      ]
+    }
+  },
+
+  "5_producto_con_imagenes": {
+    "_descripcion": "Producto con múltiples imágenes (principal, galería, miniatura)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Zapatillas Running Nike",
+      "precio_base": 89000,
+      "activo_web": true,
+      "imagenes": [
+        {
+          "url": "https://example.com/images/nike-running-front.jpg",
+          "rol": "PRINCIPAL",
+          "alt_text": "Zapatillas Nike Running vista frontal",
+          "orden": 0
+        },
+        {
+          "url": "https://example.com/images/nike-running-side.jpg",
+          "rol": "GALERIA",
+          "alt_text": "Zapatillas Nike Running vista lateral",
+          "orden": 1
+        },
+        {
+          "url": "https://example.com/images/nike-running-detail.jpg",
+          "rol": "DETALLE",
+          "alt_text": "Detalle de suela",
+          "orden": 2
+        },
+        {
+          "url": "https://example.com/images/nike-running-thumb.jpg",
+          "rol": "MINIATURA",
+          "alt_text": "Miniatura",
+          "orden": 0,
+          "ancho_px": 150,
+          "alto_px": 150
+        }
+      ]
+    }
+  },
+
+  "6_producto_con_vencimiento_y_lotes": {
+    "_descripcion": "Producto perecedero con múltiples lotes (ej: yogur)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Yogur Frutilla La Serenísima",
+      "codigo_barras": "7791234567890",
+      "precio_base": 890,
+      "unidad_venta": "UNIDAD",
+      "tiene_vencimiento": true,
+      "stock": [
+        {
+          "cantidad": 200,
+          "cantidad_minima": 20
+        }
+      ],
+      "lotes": [
+        {
+          "numero_lote": "LOTE-2026-A",
+          "fecha_vencimiento": "2026-06-15",
+          "cantidad": 100
+        },
+        {
+          "numero_lote": "LOTE-2026-B",
+          "fecha_vencimiento": "2026-07-01",
+          "cantidad": 100
+        }
+      ]
+    }
+  },
+
+  "7_producto_con_ofertas": {
+    "_descripcion": "Producto con oferta de precio temporal",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Auriculares Bluetooth Sony",
+      "precio_base": 45000,
+      "activo_web": true,
+      "ofertas": [
+        {
+          "precio_oferta": 35000,
+          "fecha_inicio": "2026-05-20T00:00:00",
+          "fecha_fin": "2026-06-20T23:59:59",
+          "activo": true
+        }
+      ],
+      "imagenes": [
+        {
+          "url": "https://example.com/images/sony-headphones.jpg",
+          "rol": "PRINCIPAL",
+          "alt_text": "Auriculares Sony WH-1000XM5"
+        }
+      ]
+    }
+  },
+
+  "8_producto_fraccionable_por_peso": {
+    "_descripcion": "Producto que se vende por KG (ej: queso, fiambre)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Queso Cremoso Sancor",
+      "precio_base": 8500,
+      "unidad_venta": "KG",
+      "es_fraccionable": true,
+      "tiene_vencimiento": true,
+      "stock": [
+        {
+          "cantidad": 25.5,
+          "cantidad_minima": 3
+        }
+      ],
+      "lotes": [
+        {
+          "numero_lote": "QC-2026-001",
+          "fecha_vencimiento": "2026-06-30",
+          "cantidad": 25.5
+        }
+      ]
+    }
+  },
+
+  "9_producto_fraccionable_por_litro": {
+    "_descripcion": "Producto que se vende por litro",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Aceite de Oliva Extra Virgen",
+      "precio_base": 12000,
+      "unidad_venta": "LITRO",
+      "es_fraccionable": true,
+      "stock": [
+        {
+          "cantidad": 50,
+          "cantidad_minima": 5
+        }
+      ]
+    }
+  },
+
+  "10_producto_con_variantes_simples": {
+    "_descripcion": "Remera con variantes de color (sin stock por variante)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Remera Básica Algodón",
+      "precio_base": 15000,
+      "tiene_variantes": true,
+      "variantes": [
+        {
+          "sku": "REMERA-NEGRA",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" }
+          ]
+        },
+        {
+          "sku": "REMERA-BLANCA",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Blanco" }
+          ]
+        },
+        {
+          "sku": "REMERA-ROJA",
+          "precio_extra": 500,
+          "atributos": [
+            { "tipo": "color", "valor": "Rojo" }
+          ]
+        }
+      ]
+    }
+  },
+
+  "11_producto_variantes_multi_atributo": {
+    "_descripcion": "Remera con variantes de color + talle (combinaciones)",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Remera Premium Oversize",
+      "precio_base": 22000,
+      "tiene_variantes": true,
+      "variantes": [
+        {
+          "sku": "PREM-NEG-S",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "S" }
+          ]
+        },
+        {
+          "sku": "PREM-NEG-M",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "M" }
+          ]
+        },
+        {
+          "sku": "PREM-NEG-L",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "L" }
+          ]
+        },
+        {
+          "sku": "PREM-NEG-XL",
+          "precio_extra": 1000,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "XL" }
+          ]
+        },
+        {
+          "sku": "PREM-BLA-M",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Blanco" },
+            { "tipo": "talle", "valor": "M" }
+          ]
+        },
+        {
+          "sku": "PREM-BLA-L",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Blanco" },
+            { "tipo": "talle", "valor": "L" }
+          ]
+        }
+      ]
+    }
+  },
+
+  "12_producto_variantes_con_stock": {
+    "_descripcion": "Producto con variantes que tienen stock independiente",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Campera Impermeable",
+      "precio_base": 65000,
+      "tiene_variantes": true,
+      "stock": [
+        {
+          "cantidad": 0,
+          "cantidad_minima": 0
+        }
+      ],
+      "variantes": [
+        {
+          "sku": "CAMP-AZUL-M",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Azul" },
+            { "tipo": "talle", "valor": "M" }
+          ],
+          "stock": [
+            {
+              "cantidad": 15,
+              "cantidad_minima": 3
+            }
+          ]
+        },
+        {
+          "sku": "CAMP-AZUL-L",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Azul" },
+            { "tipo": "talle", "valor": "L" }
+          ],
+          "stock": [
+            {
+              "cantidad": 10,
+              "cantidad_minima": 2
+            }
+          ]
+        },
+        {
+          "sku": "CAMP-NEGRA-M",
+          "precio_extra": 2000,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "M" }
+          ],
+          "stock": [
+            {
+              "cantidad": 8,
+              "cantidad_minima": 2
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  "13_producto_variantes_con_imagenes": {
+    "_descripcion": "Producto con imágenes generales + imágenes por variante",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Zapatillas Urbanas Adidas",
+      "precio_base": 95000,
+      "tiene_variantes": true,
+      "activo_web": true,
+      "imagenes": [
+        {
+          "url": "https://example.com/adidas-general.jpg",
+          "rol": "BANNER",
+          "alt_text": "Banner colección Adidas"
+        }
+      ],
+      "variantes": [
+        {
+          "sku": "ADIDAS-BLANCA-42",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Blanco" },
+            { "tipo": "talle", "valor": "42" }
+          ],
+          "imagenes": [
+            {
+              "url": "https://example.com/adidas-blanca.jpg",
+              "rol": "PRINCIPAL",
+              "alt_text": "Adidas blanca talle 42"
+            }
+          ]
+        },
+        {
+          "sku": "ADIDAS-NEGRA-42",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "color", "valor": "Negro" },
+            { "tipo": "talle", "valor": "42" }
+          ],
+          "imagenes": [
+            {
+              "url": "https://example.com/adidas-negra.jpg",
+              "rol": "PRINCIPAL",
+              "alt_text": "Adidas negra talle 42"
+            }
+          ]
+        }
+      ]
+    }
+  },
+
+  "14_producto_completo_full": {
+    "_descripcion": "Producto COMPLETO con absolutamente todo: stock, lotes, imágenes, ofertas, variantes con sub-entidades",
+    "url": "POST /producto",
+    "body": {
+      "nombre": "Helado Artesanal Premium",
+      "codigo_barras": "7799999888777",
+      "descripcion": "Helado artesanal elaborado con ingredientes naturales. Disponible en múltiples sabores y presentaciones.",
+      "activo": true,
+      "activo_pos": true,
+      "activo_web": true,
+      "precio_base": 5500,
+      "unidad_venta": "UNIDAD",
+      "tiene_variantes": true,
+      "tiene_vencimiento": true,
+      "es_fraccionable": false,
+      "stock": [
+        {
+          "cantidad": 500,
+          "cantidad_minima": 50
+        }
+      ],
+      "lotes": [
+        {
+          "numero_lote": "HELADO-MAY-2026",
+          "fecha_vencimiento": "2026-08-15",
+          "cantidad": 300
+        },
+        {
+          "numero_lote": "HELADO-JUN-2026",
+          "fecha_vencimiento": "2026-09-01",
+          "cantidad": 200
+        }
+      ],
+      "imagenes": [
+        {
+          "url": "https://example.com/helado-banner.jpg",
+          "rol": "BANNER",
+          "alt_text": "Banner Helados Premium",
+          "orden": 0,
+          "ancho_px": 1200,
+          "alto_px": 400
+        },
+        {
+          "url": "https://example.com/helado-principal.jpg",
+          "rol": "PRINCIPAL",
+          "alt_text": "Helado artesanal",
+          "orden": 0
+        }
+      ],
+      "ofertas": [
+        {
+          "precio_oferta": 4200,
+          "fecha_inicio": "2026-05-20T00:00:00",
+          "fecha_fin": "2026-06-30T23:59:59",
+          "activo": true
+        }
+      ],
+      "variantes": [
+        {
+          "sku": "HELADO-CHOC-1K",
+          "precio_extra": 0,
+          "atributos": [
+            { "tipo": "sabor", "valor": "Chocolate" },
+            { "tipo": "presentacion", "valor": "1 Kg" }
+          ],
+          "stock": [
+            { "cantidad": 80, "cantidad_minima": 10 }
+          ],
+          "lotes": [
+            {
+              "numero_lote": "CHOC-1K-A",
+              "fecha_vencimiento": "2026-08-15",
+              "cantidad": 80
+            }
+          ],
+          "imagenes": [
+            {
+              "url": "https://example.com/helado-chocolate.jpg",
+              "rol": "PRINCIPAL",
+              "alt_text": "Helado de Chocolate 1Kg"
+            }
+          ],
+          "ofertas": [
+            {
+              "precio_oferta": 4000,
+              "fecha_inicio": "2026-05-20T00:00:00",
+              "fecha_fin": "2026-06-15T23:59:59",
+              "activo": true
+            }
+          ]
+        },
+        {
+          "sku": "HELADO-FRUT-1K",
+          "precio_extra": 500,
+          "atributos": [
+            { "tipo": "sabor", "valor": "Frutilla" },
+            { "tipo": "presentacion", "valor": "1 Kg" }
+          ],
+          "stock": [
+            { "cantidad": 60, "cantidad_minima": 8 }
+          ],
+          "lotes": [
+            {
+              "numero_lote": "FRUT-1K-A",
+              "fecha_vencimiento": "2026-07-30",
+              "cantidad": 60
+            }
+          ],
+          "imagenes": [
+            {
+              "url": "https://example.com/helado-frutilla.jpg",
+              "rol": "PRINCIPAL",
+              "alt_text": "Helado de Frutilla 1Kg"
+            }
+          ]
+        },
+        {
+          "sku": "HELADO-CHOC-500",
+          "precio_extra": -1500,
+          "atributos": [
+            { "tipo": "sabor", "valor": "Chocolate" },
+            { "tipo": "presentacion", "valor": "500g" }
+          ],
+          "stock": [
+            { "cantidad": 120, "cantidad_minima": 15 }
+          ]
+        }
+      ]
+    }
+  },
+
+  "15_stock_individual": {
+    "_descripcion": "Crear stock por separado para un producto existente",
+    "url": "POST /stock",
+    "body": {
+      "producto_id": "UUID-DEL-PRODUCTO-AQUI",
+      "cantidad": 100,
+      "cantidad_minima": 10
+    }
+  },
+
+  "16_stock_individual_con_variante": {
+    "_descripcion": "Crear stock para una variante específica",
+    "url": "POST /stock",
+    "body": {
+      "producto_id": "UUID-DEL-PRODUCTO-AQUI",
+      "variante_id": "UUID-DE-LA-VARIANTE-AQUI",
+      "sucursal_id": "sucursal-centro-001",
+      "cantidad": 25,
+      "cantidad_minima": 5
+    }
+  },
+
+  "17_ajustar_stock": {
+    "_descripcion": "Ajustar stock (sumar o restar) — para ventas/compras",
+    "url": "PATCH /stock/:id/ajustar",
+    "body_sumar": {
+      "cantidad": 10
+    },
+    "body_restar": {
+      "cantidad": -3
+    }
+  },
+
+  "18_imagen_individual": {
+    "_descripcion": "Agregar imagen a un producto existente",
+    "url": "POST /imagen",
+    "body": {
+      "producto_id": "UUID-DEL-PRODUCTO-AQUI",
+      "url": "https://example.com/nueva-imagen.jpg",
+      "rol": "GALERIA",
+      "alt_text": "Nueva foto del producto",
+      "orden": 5
+    }
+  },
+
+  "19_imagen_individual_variante": {
+    "_descripcion": "Agregar imagen a una variante específica",
+    "url": "POST /imagen",
+    "body": {
+      "producto_id": "UUID-DEL-PRODUCTO-AQUI",
+      "variante_id": "UUID-DE-LA-VARIANTE-AQUI",
+      "url": "https://example.com/variante-roja.jpg",
+      "rol": "PRINCIPAL",
+      "alt_text": "Foto variante roja"
+    }
+  },
+
+  "20_update_producto_parcial": {
+    "_descripcion": "Actualizar solo algunos campos del producto (PATCH)",
+    "url": "PATCH /producto/:id",
+    "body": {
+      "nombre": "Nombre Actualizado",
+      "precio_base": 18000,
+      "activo_web": true
+    }
+  },
+
+  "21_update_producto_con_stock_nuevo": {
+    "_descripcion": "Actualizar producto reemplazando su stock",
+    "url": "PATCH /producto/:id",
+    "body": {
+      "precio_base": 20000,
+      "stock": [
+        {
+          "cantidad": 200,
+          "cantidad_minima": 20
+        },
+        {
+          "sucursal_id": "sucursal-sur-003",
+          "cantidad": 50,
+          "cantidad_minima": 5
+        }
+      ]
+    }
+  },
+
+  "_enums_referencia": {
+    "UnidadVenta": ["UNIDAD", "KG", "GRAMO", "LITRO", "ML"],
+    "RolImagen": ["PRINCIPAL", "GALERIA", "DETALLE", "BANNER", "MINIATURA"]
+  }
+}
