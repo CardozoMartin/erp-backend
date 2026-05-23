@@ -4,13 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Imagen } from './entities/imagen.entity';
 import { Producto } from '../producto/entities/producto.entity';
 import { Variante } from '../variante/entities/variante.entity';
 import { CreateImagenDto } from './dto/create-imagen.dto';
 import { UpdateImagenDto } from './dto/update-imagen.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { RolImagen } from './entities/imagen.entity';
 
 @Injectable()
 export class ImagenService {
@@ -23,6 +24,71 @@ export class ImagenService {
     private readonly varianteRepo: Repository<Variante>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  private readonly principalRoles = new Set<RolImagen>([
+    RolImagen.PRINCIPAL,
+    RolImagen.PRINCIPAL_POS,
+    RolImagen.PRINCIPAL_WEB,
+  ]);
+
+  private async clearPreviousPrincipalRole(dto: CreateImagenDto | UpdateImagenDto) {
+    if (!dto.rol || (!this.principalRoles.has(dto.rol) && !(dto as any).reemplazar_rol)) return;
+    if (!dto.producto_id) return;
+
+    if ((dto as any).reemplazar_rol) {
+      const anteriores = await this.imagenRepo.find({
+        where: {
+          producto_id: dto.producto_id,
+          variante_id: dto.variante_id ?? IsNull(),
+          rol: dto.rol,
+        },
+      });
+
+      for (const imagen of anteriores) {
+        if (imagen.storage_key) {
+          await this.cloudinaryService.delete(imagen.storage_key);
+        }
+      }
+      if (anteriores.length > 0) {
+        await this.imagenRepo.remove(anteriores);
+      }
+      return;
+    }
+
+    await this.imagenRepo.update(
+      {
+        producto_id: dto.producto_id,
+        variante_id: dto.variante_id ?? IsNull(),
+        rol: dto.rol,
+      },
+      { rol: RolImagen.GALERIA },
+    );
+  }
+
+  private async replaceSpecificImage(dto: CreateImagenDto) {
+    if (!dto.reemplazar_imagen_id) return;
+
+    const imagen = await this.imagenRepo.findOne({
+      where: { id: dto.reemplazar_imagen_id },
+    });
+    if (!imagen) return;
+
+    if (imagen.producto_id !== dto.producto_id) {
+      throw new BadRequestException(
+        'La imagen a reemplazar no pertenece al producto indicado',
+      );
+    }
+    if ((dto.variante_id ?? null) !== (imagen.variante_id ?? null)) {
+      throw new BadRequestException(
+        'La imagen a reemplazar no pertenece a la variante indicada',
+      );
+    }
+
+    if (imagen.storage_key) {
+      await this.cloudinaryService.delete(imagen.storage_key);
+    }
+    await this.imagenRepo.remove(imagen);
+  }
 
   async create(
     dto: CreateImagenDto,
@@ -68,13 +134,16 @@ export class ImagenService {
       alto_px,
     });
 
+    await this.replaceSpecificImage(dto);
+    await this.clearPreviousPrincipalRole(dto);
+
     // 4. Guardar solo la URL y metadatos en la DB
     const imagen = this.imagenRepo.create({
       url,
       storage_key,
       ancho_px,
       alto_px,
-      rol: dto.rol,
+      rol: dto.rol ?? RolImagen.GALERIA,
       alt_text: dto.alt_text ?? null,
       orden: dto.orden ?? 0,
       producto,
@@ -91,6 +160,19 @@ export class ImagenService {
     return this.imagenRepo.find({ relations: ['producto', 'variante'] });
   }
 
+  async findByProducto(productoId: string): Promise<Imagen[]> {
+    const producto = await this.productoRepo.findOne({
+      where: { id: productoId },
+    });
+    if (!producto) throw new NotFoundException('Producto no encontrado');
+
+    return this.imagenRepo.find({
+      where: { producto_id: productoId },
+      relations: ['variante'],
+      order: { rol: 'ASC', orden: 'ASC', created_at: 'ASC' },
+    });
+  }
+
   async findOneOrFail(id: string): Promise<Imagen> {
     const imagen = await this.imagenRepo.findOne({
       where: { id },
@@ -102,6 +184,11 @@ export class ImagenService {
 
   async update(id: string, dto: UpdateImagenDto): Promise<Imagen> {
     const imagen = await this.findOneOrFail(id);
+    await this.clearPreviousPrincipalRole({
+      ...dto,
+      producto_id: imagen.producto_id,
+      variante_id: dto.variante_id ?? imagen.variante_id ?? undefined,
+    });
     Object.assign(imagen, dto);
     return this.imagenRepo.save(imagen);
   }

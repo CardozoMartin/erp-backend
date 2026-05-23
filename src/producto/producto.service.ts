@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ProductoPreciosService } from 'src/producto_precios/producto_precios.service';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, IsNull } from 'typeorm';
 import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
 import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
 import { Imagen } from '../imagen/entities/imagen.entity';
@@ -17,7 +17,8 @@ import { Stock } from '../stock/entities/stock.entity';
 import { Variante } from '../variante/entities/variante.entity';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
-import { Producto } from './entities/producto.entity';
+import { Producto, UnidadVenta } from './entities/producto.entity';
+import { UpdateStockDto } from 'src/stock/dto/update-stock.dto';
 
 @Injectable()
 export class ProductoService {
@@ -56,6 +57,23 @@ export class ProductoService {
     private readonly productoPrecioService: ProductoPreciosService,
     private readonly dataSource: DataSource,
   ) {}
+
+  private validateWholeUnitStock(
+    producto: Pick<Producto, 'unidad_venta' | 'es_fraccionable'>,
+    cantidad: number | undefined,
+    campo: string,
+  ) {
+    if (
+      cantidad !== undefined &&
+      producto.unidad_venta === UnidadVenta.UNIDAD &&
+      !producto.es_fraccionable &&
+      !Number.isInteger(cantidad)
+    ) {
+      throw new BadRequestException(
+        `${campo} debe ser un número entero para productos vendidos por unidad`,
+      );
+    }
+  }
 
   //Servicio para crear Producto Completo con variantes, atributos, stock, lotes, imagenes y ofertas en una sola transaccion
   async create(createProductoDto: CreateProductoDto): Promise<Producto> {
@@ -139,6 +157,10 @@ export class ProductoService {
     //5.- Validamos que no haya duplicados de stock por sucursal a nivel producto
     if (createProductoDto.stock && createProductoDto.stock.length > 0) {
       const sucursales = new Set<string>();
+      const productUnitConfig = {
+        unidad_venta: createProductoDto.unidad_venta ?? UnidadVenta.UNIDAD,
+        es_fraccionable: createProductoDto.es_fraccionable ?? false,
+      };
       for (const stockDto of createProductoDto.stock) {
         const sucursalKey = stockDto.sucursal_id || 'stock-general';
         if (sucursales.has(sucursalKey)) {
@@ -152,6 +174,11 @@ export class ProductoService {
         if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
           throw new BadRequestException('El stock no puede ser negativo');
         }
+        this.validateWholeUnitStock(
+          productUnitConfig,
+          stockDto.cantidad,
+          'La cantidad de stock',
+        );
         if (
           stockDto.cantidad_minima !== undefined &&
           stockDto.cantidad_minima < 0
@@ -160,6 +187,11 @@ export class ProductoService {
             'La cantidad minima no puede ser negativa',
           );
         }
+        this.validateWholeUnitStock(
+          productUnitConfig,
+          stockDto.cantidad_minima,
+          'La cantidad mínima de stock',
+        );
       }
     }
 
@@ -185,6 +217,10 @@ export class ProductoService {
       for (const varianteDto of createProductoDto.variantes) {
         if (varianteDto.stock && varianteDto.stock.length > 0) {
           const sucursales = new Set<string>();
+          const productUnitConfig = {
+            unidad_venta: createProductoDto.unidad_venta ?? UnidadVenta.UNIDAD,
+            es_fraccionable: createProductoDto.es_fraccionable ?? false,
+          };
           for (const stockDto of varianteDto.stock) {
             const sucursalKey = stockDto.sucursal_id || 'stock-general';
             if (sucursales.has(sucursalKey)) {
@@ -198,6 +234,11 @@ export class ProductoService {
             if (stockDto.cantidad !== undefined && stockDto.cantidad < 0) {
               throw new BadRequestException('El stock no puede ser negativo');
             }
+            this.validateWholeUnitStock(
+              productUnitConfig,
+              stockDto.cantidad,
+              'La cantidad de stock',
+            );
             if (
               stockDto.cantidad_minima !== undefined &&
               stockDto.cantidad_minima < 0
@@ -206,6 +247,11 @@ export class ProductoService {
                 'La cantidad minima no puede ser negativa',
               );
             }
+            this.validateWholeUnitStock(
+              productUnitConfig,
+              stockDto.cantidad_minima,
+              'La cantidad mínima de stock',
+            );
           }
         }
         if (varianteDto.lotes && varianteDto.lotes.length > 0) {
@@ -740,5 +786,173 @@ export class ProductoService {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
     await this.productoRepo.remove(producto);
+  }
+
+  //servicio para actualizar el stock de un producto o variante especifica, si se envia el id de la variante se actualiza el stock de la variante, sino se actualiza el stock a nivel producto
+  async updateStockProduct(id: string, dto: UpdateStockDto): Promise<Stock> {
+    //1.- primero validamos que el producto exista
+    const producto = await this.productoRepo.findOne({ where: { id } });
+    if (!producto) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+    //2.- si se envio el id de la variante, validamos que la variante exista y que pertenezca al producto
+    let variante: Variante | null = null;
+    if (dto.variante_id) {
+      variante = await this.varianteRepo.findOne({
+        where: { id: dto.variante_id },
+      });
+      if (!variante) {
+        throw new NotFoundException(
+          `Variante con ID ${dto.variante_id} no encontrada`,
+        );
+      }
+      if (variante.producto_id !== id) {
+        throw new BadRequestException(
+          `La variante con ID ${dto.variante_id} no pertenece al producto con ID ${id}`,
+        );
+      }
+    }
+
+    const cantidad =
+      dto.cantidad === undefined ? undefined : Number(dto.cantidad);
+    const cantidadMinima =
+      dto.cantidad_minima === undefined
+        ? undefined
+        : Number(dto.cantidad_minima);
+    const sucursalId = dto.sucursal_id?.trim?.() || null;
+
+    if (
+      cantidad !== undefined &&
+      (!Number.isFinite(cantidad) || cantidad < 0)
+    ) {
+      throw new BadRequestException(
+        'La cantidad de stock debe ser un número no negativo',
+      );
+    }
+    this.validateWholeUnitStock(producto, cantidad, 'La cantidad de stock');
+    if (
+      cantidadMinima !== undefined &&
+      (!Number.isFinite(cantidadMinima) || cantidadMinima < 0)
+    ) {
+      throw new BadRequestException(
+        'La cantidad mínima de stock debe ser un número no negativo',
+      );
+    }
+
+    this.validateWholeUnitStock(
+      producto,
+      cantidadMinima,
+      'La cantidad mínima de stock',
+    );
+
+    //3.- buscamos el stock para el producto o variante especificada.
+    // Si no existe, lo creamos para permitir ajustes iniciales desde la ficha.
+    let stock = await this.stockRepo.findOne({
+      where: {
+        producto_id: id,
+        variante_id:
+          dto.variante_id == null ? IsNull() : dto.variante_id,
+        sucursal_id: sucursalId == null ? IsNull() : sucursalId,
+      },
+    });
+    if (!stock) {
+      stock = this.stockRepo.create({
+        producto,
+        producto_id: id,
+        variante,
+        variante_id: dto.variante_id ?? null,
+        sucursal_id: sucursalId,
+        cantidad: cantidad ?? 0,
+        cantidad_minima: cantidadMinima ?? 0,
+      } as Partial<Stock>);
+      return this.stockRepo.save(stock);
+    }
+
+    if (cantidad !== undefined) {
+      stock.cantidad = cantidad;
+    }
+    if (cantidadMinima !== undefined) {
+      stock.cantidad_minima = cantidadMinima;
+    }
+    return this.stockRepo.save(stock);
+  }
+
+  async adjustStockProduct(
+    id: string,
+    dto: {
+      cantidad: number | string;
+      operacion: 'AUMENTAR' | 'RESTAR';
+      sucursal_id?: string | null;
+      variante_id?: string | null;
+    },
+  ): Promise<Stock> {
+    const producto = await this.productoRepo.findOne({ where: { id } });
+    if (!producto) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+
+    let variante: Variante | null = null;
+    if (dto.variante_id) {
+      variante = await this.varianteRepo.findOne({
+        where: { id: dto.variante_id },
+      });
+      if (!variante) {
+        throw new NotFoundException(
+          `Variante con ID ${dto.variante_id} no encontrada`,
+        );
+      }
+      if (variante.producto_id !== id) {
+        throw new BadRequestException(
+          `La variante con ID ${dto.variante_id} no pertenece al producto con ID ${id}`,
+        );
+      }
+    }
+
+    const cantidad = Number(dto.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      throw new BadRequestException(
+        'La cantidad a ajustar debe ser un número mayor a cero',
+      );
+    }
+    this.validateWholeUnitStock(producto, cantidad, 'La cantidad de stock');
+
+    if (!['AUMENTAR', 'RESTAR'].includes(dto.operacion)) {
+      throw new BadRequestException('La operación debe ser AUMENTAR o RESTAR');
+    }
+
+    const sucursalId = dto.sucursal_id?.trim?.() || null;
+    let stock = await this.stockRepo.findOne({
+      where: {
+        producto_id: id,
+        variante_id: dto.variante_id == null ? IsNull() : dto.variante_id,
+        sucursal_id: sucursalId == null ? IsNull() : sucursalId,
+      },
+    });
+
+    const cantidadActual = Number(stock?.cantidad ?? 0);
+    const nuevaCantidad =
+      dto.operacion === 'AUMENTAR'
+        ? cantidadActual + cantidad
+        : cantidadActual - cantidad;
+
+    if (nuevaCantidad < 0) {
+      throw new BadRequestException('El stock no puede quedar negativo');
+    }
+
+    if (!stock) {
+      stock = this.stockRepo.create({
+        producto,
+        producto_id: id,
+        variante,
+        variante_id: dto.variante_id ?? null,
+        sucursal_id: sucursalId,
+        cantidad: nuevaCantidad,
+        cantidad_minima: 0,
+      } as Partial<Stock>);
+      return this.stockRepo.save(stock);
+    }
+
+    stock.cantidad = nuevaCantidad;
+    return this.stockRepo.save(stock);
   }
 }

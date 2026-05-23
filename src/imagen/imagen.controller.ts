@@ -19,15 +19,14 @@ import { UpdateImagenDto } from './dto/update-imagen.dto';
 // Configuración de Multer — memoria (sin guardar en disco)
 const multerConfig = {
   storage: memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB máximo
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req: any, file: Express.Multer.File, cb: any) => {
-    const permitidos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (permitidos.includes(file.mimetype)) {
+    if (file.mimetype?.startsWith('image/')) {
       cb(null, true);
     } else {
       cb(
         new BadRequestException(
-          'Solo se permiten imágenes JPG, PNG, WEBP o GIF',
+          'Solo se permiten archivos de imagen',
         ),
         false,
       );
@@ -70,9 +69,15 @@ export class ImagenController {
   // GET /imagenes/producto/:productoId
   @Get('producto/:productoId')
   findByProducto(@Param('productoId') productoId: string) {
-    return this.imagenService.findOneOrFail(productoId);
+    return this.imagenService.findByProducto(productoId);
   }
 
+  // PATCH /imagenes/reordenar
+  // Body: { "ids": ["uuid1", "uuid2", "uuid3"] }
+  @Patch('reordenar')
+  reordenar(@Body() body: { ids: string[] }) {
+    return this.imagenService.reordenar(body.ids);
+  }
   // GET /imagenes/:id
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -83,13 +88,6 @@ export class ImagenController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateImagenDto) {
     return this.imagenService.update(id, dto);
-  }
-
-  // PATCH /imagenes/reordenar
-  // Body: { "ids": ["uuid1", "uuid2", "uuid3"] }
-  @Patch('reordenar')
-  reordenar(@Body() body: { ids: string[] }) {
-    return this.imagenService.reordenar(body.ids);
   }
 
   // DELETE /imagenes/:id — elimina de Cloudinary Y de la DB

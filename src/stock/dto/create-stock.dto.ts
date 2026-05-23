@@ -2,8 +2,9 @@ import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateStockDto {
+  @IsOptional()
   @IsUUID()
-  producto_id!: string;
+  producto_id?: string;
 
   @IsOptional()
   @IsUUID()

@@ -13,6 +13,13 @@ import { Producto } from '../../producto/entities/producto.entity';
 import { Variante } from '../../variante/entities/variante.entity';
 import { Sucursal } from '../../sucursal/entities/sucursal.entity';
 
+const decimalNumberTransformer = {
+  to: (value?: number | string | null) =>
+    value === undefined || value === null ? value : Number(value),
+  from: (value?: string | number | null) =>
+    value === undefined || value === null ? value : Number(value),
+};
+
 // sucursal_id null = stock general (sin sucursal específica)
 // variante_id null = stock del producto sin variantes
 @Entity('stock')
@@ -65,10 +72,22 @@ export class Stock {
 
   // Cantidades ────────────────────────────────────────────────────────────
   // Soporta decimales para productos fraccionables (ej: 1.5 kg)
-  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 3,
+    default: 0,
+    transformer: decimalNumberTransformer,
+  })
   cantidad!: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 3,
+    default: 0,
+    transformer: decimalNumberTransformer,
+  })
   cantidad_minima!: number;
 
   @CreateDateColumn()

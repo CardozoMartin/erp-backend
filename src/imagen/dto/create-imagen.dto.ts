@@ -21,6 +21,14 @@ export class CreateImagenDto {
 
   @IsOptional()
   @IsString()
+  reemplazar_rol?: string;
+
+  @IsOptional()
+  @IsUUID()
+  reemplazar_imagen_id?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(200)
   alt_text?: string;
 

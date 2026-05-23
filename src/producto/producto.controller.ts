@@ -48,4 +48,28 @@ export class ProductoController {
   remove(@Param('id') id: string) {
     return this.productoService.remove(id);
   }
+
+  //endpoint para sumar o restar stock de un producto o variante
+  @Patch(':id/stock/ajustar')
+  ajustarMovimientoStock(
+    @Param('id') id: string,
+    @Body()
+    ajustarStockDto: {
+      cantidad: number | string;
+      operacion: 'AUMENTAR' | 'RESTAR';
+      sucursal_id?: string | null;
+      variante_id?: string | null;
+    },
+  ) {
+    return this.productoService.adjustStockProduct(id, ajustarStockDto);
+  }
+
+  //endpoint para actualizar solamente el stock de un producto o variantes
+  @Patch(':id/stock')
+  ajustarStock(
+    @Param('id') id: string,
+    @Body() ajustarStockDto: { cantidad: number; variante_id?: string },
+  ) {
+    return this.productoService.updateStockProduct(id, ajustarStockDto);
+  }
 }

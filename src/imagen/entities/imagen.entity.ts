@@ -11,6 +11,8 @@ import { Variante } from '../../variante/entities/variante.entity';
 
 export enum RolImagen {
   PRINCIPAL = 'PRINCIPAL',
+  PRINCIPAL_POS = 'PRINCIPAL_POS',
+  PRINCIPAL_WEB = 'PRINCIPAL_WEB',
   GALERIA   = 'GALERIA',
   DETALLE   = 'DETALLE',
   BANNER    = 'BANNER',
