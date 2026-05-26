@@ -31,7 +31,7 @@ export class EmpleadosController {
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '30',
   ) {
-    return this.empleadosService.findAll(Number(page), Number(limit)); 
+    return this.empleadosService.findAll(Number(page), Number(limit));
   }
 
   @Get(':id')
