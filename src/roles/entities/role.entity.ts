@@ -1,4 +1,5 @@
 import { Permiso } from 'src/permisos/entities/permiso.entity';
+import { EmpleadoRol } from 'src/empleados/entities/empleado-rol.entity';
 import {
   Column,
   Entity,

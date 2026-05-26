@@ -1,26 +1,179 @@
-import { Injectable } from '@nestjs/common';
-import { CreateEmpleadoDto } from './dto/create-empleado.dto';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { RolesService } from 'src/roles/roles.service';
+import { Repository } from 'typeorm';
+import {
+  CrearEmpleadoDto,
+  RespuestaEmpleadoDto,
+  AsignarRolesDto,
+} from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
+import { EmpleadoRol } from './entities/empleado-rol.entity';
+import { Empleado } from './entities/empleado.entity';
+import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 
 @Injectable()
 export class EmpleadosService {
-  create(createEmpleadoDto: CreateEmpleadoDto) {
-    return 'This action adds a new empleado';
+  constructor(
+    @InjectRepository(Empleado)
+    private readonly empleadosRepo: Repository<Empleado>,
+    @InjectRepository(EmpleadoRol)
+    private readonly empleadoRolRepo: Repository<EmpleadoRol>,
+    private readonly rolesService: RolesService,
+    private readonly empleadoSucursalesService: EmpleadoSucursalesService,
+  ) {}
+  async create(
+    createEmpleadoDto: CrearEmpleadoDto,
+  ): Promise<RespuestaEmpleadoDto> {
+    //1.- validamos que no exista el empleado por email
+    const empladoExiste = await this.empleadosRepo.findOne({
+      where: { email: createEmpleadoDto.email },
+    });
+    if (empladoExiste) {
+      throw new ConflictException(
+        `El email ${createEmpleadoDto.email} ya está registrado`,
+      );
+    }
+
+    const roles = createEmpleadoDto.rolesIds?.length
+      ? await this.rolesService.findByIds(createEmpleadoDto.rolesIds)
+      : [];
+
+    //hasheamos la contraseña
+    const contraseñaHash = await bcrypt.hash(createEmpleadoDto.contrasena, 10);
+
+    const nuevoEmpleado = this.empleadosRepo.create({
+      nombreCompleto: createEmpleadoDto.nombreCompleto,
+      email: createEmpleadoDto.email,
+      contrasena: contraseñaHash,
+      telefono: createEmpleadoDto.telefono,
+      direccion: createEmpleadoDto.direccion,
+      cargo: createEmpleadoDto.cargo,
+      foto_url: createEmpleadoDto.foto_url,
+    });
+    const empleadoGuardado = await this.empleadosRepo.save(nuevoEmpleado);
+
+    if (roles.length) {
+      //creamos las relaciones con roles
+      const empleadoRoles = roles.map((rol) =>
+        this.empleadoRolRepo.create({
+          empleado: empleadoGuardado,
+          rol,
+        }),
+      );
+      await this.empleadoRolRepo.save(empleadoRoles);
+    }
+    // Sucursal
+    if (createEmpleadoDto.sucursalId) {
+      await this.empleadoSucursalesService.asignar(
+        empleadoGuardado.id,
+        createEmpleadoDto.sucursalId,
+        createEmpleadoDto.esSucursalPrincipal ?? true,
+      );
+    }
+
+    const empleadoCompleto = await this.cargarEmpleadoCompleto(
+      empleadoGuardado.id,
+    );
+    return this.buildRespuesta(empleadoCompleto);
   }
 
   findAll() {
     return `This action returns all empleados`;
   }
 
-  findOne(id: number) {
+  findOne(id: string) {
     return `This action returns a #${id} empleado`;
   }
 
-  update(id: number, updateEmpleadoDto: UpdateEmpleadoDto) {
+  update(id: string, updateEmpleadoDto: UpdateEmpleadoDto) {
     return `This action updates a #${id} empleado`;
   }
 
-  remove(id: number) {
+  remove(id: string) {
     return `This action removes a #${id} empleado`;
+  }
+
+  async asignarRoles(
+    id: string,
+    asignarRolesDto: AsignarRolesDto,
+  ): Promise<RespuestaEmpleadoDto> {
+    const empleado = await this.cargarEmpleadoCompleto(id);
+    const roles = await this.rolesService.findByIds(asignarRolesDto.rolesIds);
+
+    if (empleado.empleadoRoles.length > 0) {
+      await this.empleadoRolRepo.remove(empleado.empleadoRoles);
+    }
+
+    const empleadoRoles = roles.map((rol) =>
+      this.empleadoRolRepo.create({
+        empleado,
+        rol,
+      }),
+    );
+    await this.empleadoRolRepo.save(empleadoRoles);
+
+    const empleadoActualizado = await this.cargarEmpleadoCompleto(id);
+    return this.buildRespuesta(empleadoActualizado);
+  }
+
+  //Helpers
+  private buildRespuesta(empleado: Empleado): RespuestaEmpleadoDto {
+    const roles = empleado.empleadoRoles.map((er) => ({
+      id: er.rol.id,
+      nombre: er.rol.nombre,
+      rutaInicio: er.rol.rutaInicio,
+    }));
+
+    const permisos = [
+      ...new Set(
+        empleado.empleadoRoles.flatMap((er) =>
+          er.rol.permisos.map((p) => p.clave),
+        ),
+      ),
+    ];
+
+    // ← NUEVO
+    const sucursales =
+      empleado.sucursales?.map((es) => ({
+        id: es.sucursal.id,
+        nombre: es.sucursal.nombre,
+        esPrincipal: es.esSucursalPrincipal,
+        activo: es.activo,
+      })) ?? [];
+
+    return {
+      id: empleado.id,
+      nombreCompleto: empleado.nombreCompleto,
+      email: empleado.email,
+      telefono: empleado.telefono,
+      direccion: empleado.direccion,
+      cargo: empleado.cargo,
+      foto_url: empleado.foto_url,
+      activo: empleado.activo,
+      roles,
+      permisos,
+      sucursales, // ← nuevo
+    };
+  }
+
+  private async cargarEmpleadoCompleto(id: string): Promise<Empleado> {
+    const empleado = await this.empleadosRepo.findOne({
+      where: { id },
+      relations: [
+        'empleadoRoles',
+        'empleadoRoles.rol',
+        'empleadoRoles.rol.permisos',
+        'sucursales', // ← nuevo
+        'sucursales.sucursal', // ← nuevo
+      ],
+    });
+    if (!empleado) throw new NotFoundException(`Empleado ${id} no encontrado`);
+    return empleado;
   }
 }

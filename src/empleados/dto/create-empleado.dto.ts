@@ -1,6 +1,7 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -24,7 +25,7 @@ export class CrearEmpleadoDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
-  password!: string;
+  contrasena!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -45,10 +46,18 @@ export class CrearEmpleadoDto {
   @IsOptional()
   foto_url?: string;
 
+  @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
   @ArrayMinSize(1)
-  rolesIds!: string[];
+  rolesIds?: string[];
+  @IsUUID()
+  @IsOptional()
+  sucursalId?: string; // ← nuevo
+
+  @IsBoolean()
+  @IsOptional()
+  esSucursalPrincipal?: boolean;
 }
 
 // asignar-roles.dto.ts  ← para el endpoint PATCH /empleados/:id/roles
@@ -71,4 +80,10 @@ export class RespuestaEmpleadoDto {
   activo!: boolean;
   roles!: { id: string; nombre: string; rutaInicio: string }[];
   permisos!: string[]; // ['ventas.crear', 'caja.cobrar', ...]
+  sucursales!: {
+    id: string;
+    nombre: string;
+    esPrincipal: boolean;
+    activo: boolean;
+  }[];
 }

@@ -8,6 +8,6 @@ import { SucursalController } from './sucursal.controller';
   imports: [TypeOrmModule.forFeature([Sucursal])],
   controllers: [SucursalController],
   providers: [SucursalService],
-  exports: [SucursalService],
+  exports: [SucursalService, TypeOrmModule],
 })
 export class SucursalModule {}

@@ -1,5 +1,8 @@
+// empleados/entities/empleado.entity.ts
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { EmpleadoRol } from './empleado-rol.entity';
+import { EmpleadoSucursal } from './empleado-sucursal.entity';
+import { EmpleadoPermiso } from './empleado-permiso.entity';
 
 @Entity('empleados')
 export class Empleado {
@@ -18,7 +21,7 @@ export class Empleado {
   @Column({ type: 'varchar', length: 255 })
   direccion!: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: false })
+  @Column({ type: 'varchar', length: 255, nullable: false })
   contrasena!: string;
 
   @Column({ type: 'varchar', length: 50 })
@@ -32,4 +35,11 @@ export class Empleado {
 
   @OneToMany(() => EmpleadoRol, (er) => er.empleado, { eager: true })
   empleadoRoles!: EmpleadoRol[];
+
+  //NUEVAS relaciones
+  @OneToMany(() => EmpleadoSucursal, (es) => es.empleado)
+  sucursales!: EmpleadoSucursal[];
+
+  @OneToMany(() => EmpleadoPermiso, (ep) => ep.empleado)
+  permisosExtra!: EmpleadoPermiso[];
 }

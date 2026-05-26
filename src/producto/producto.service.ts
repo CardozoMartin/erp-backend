@@ -850,7 +850,8 @@ export class ProductoService {
     let stock = await this.stockRepo.findOne({
       where: {
         producto_id: id,
-        variante_id:ucursal_id: sucursalId == null ? IsNull() : sucursalId,
+        variante_id: dto.variante_id == null ? IsNull() : dto.variante_id,
+        sucursal_id: sucursalId == null ? IsNull() : sucursalId,
       },
     });
     if (!stock) {

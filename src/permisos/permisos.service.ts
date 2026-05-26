@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { CrearPermisoDto } from './dto/create-permiso.dto';
 import { UpdatePermisoDto } from './dto/update-permiso.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Permiso } from './entities/permiso.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 @Injectable()
 export class PermisosService {
@@ -69,6 +69,44 @@ export class PermisosService {
     //2.- si existe, lo eliminamos
     await this.permisoRepository.delete(id);
   }
+
+  async findByIds(ids: string[]): Promise<Permiso[]> {
+    if (!ids.length) return [];
+    const permisos = await this.permisoRepository.findBy({ id: In(ids) });
+    if (permisos.length !== ids.length) {
+      throw new ConflictException(
+        `Algunos permisos no existen. IDs proporcionados: ${ids.join(', ')}`,
+      );
+    }
+    return permisos;
+  }
+
+  async createMissing(permisosSeed: CrearPermisoDto[]): Promise<{
+    creados: Permiso[];
+    existentes: Permiso[];
+  }> {
+    if (!permisosSeed.length) return { creados: [], existentes: [] };
+
+    const claves = permisosSeed.map((permiso) => permiso.clave);
+    const existentes = await this.permisoRepository.find({
+      where: { clave: In(claves) },
+    });
+    const clavesExistentes = new Set(
+      existentes.map((permiso) => permiso.clave),
+    );
+
+    const permisosFaltantes = permisosSeed.filter(
+      (permiso) => !clavesExistentes.has(permiso.clave),
+    );
+    const creados = permisosFaltantes.length
+      ? await this.permisoRepository.save(
+          this.permisoRepository.create(permisosFaltantes),
+        )
+      : [];
+
+    return { creados, existentes };
+  }
+
   //servicio para desactivar un permiso cambiar el estado
   async desactivar(id: string): Promise<Permiso> {
     //1.- primero verificamos que el permiso exista
