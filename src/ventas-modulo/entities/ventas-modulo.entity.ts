@@ -1,32 +1,53 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-export enum ESTADO {
-  COTIZACION = 'COTIZACION',
-  ORDEN_DE_VENTA = 'ORDEN_DE_VENTA',
-  PARCIALMENTE_RETIRADO = 'PARCIALMENTE_RETIRO',
-  RETIRADO = 'RETIRO',
-  FACTURADO = 'FACTURADO',
-  ANULADO = 'ANULADO',
+export enum EstadoVenta {
+  // Documentos de preventa
+  COTIZACION = 'COTIZACION', // presupuesto, puede convertirse en venta
+
+  // Flujo de venta
+  ABIERTA = 'ABIERTA', // carrito armándose
+  PENDIENTE_PAGO = 'PENDIENTE_PAGO', // esperando cajero
+  PAGADA = 'PAGADA', // cobrada
+  PENDIENTE_DESPACHO = 'PENDIENTE_DESPACHO', // esperando depósito
+  DESPACHADA = 'DESPACHADA', // entregada
+
+  // Finales
+  CANCELADA = 'CANCELADA',
+  VENCIDA = 'VENCIDA', // cotización que expiró
 }
-@Entity()
+
+export enum TipoDocumento {
+  COTIZACION = 'COTIZACION',
+  VENTA = 'VENTA',
+}
+@Entity('ventas_modulo')
 export class VentasModulo {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({ type: 'enum', enum: EstadoVenta, default: EstadoVenta.ABIERTA })
+  estado!: EstadoVenta;
+
+  @Column({ type: 'enum', enum: FlujoVenta, default: FlujoVenta.SIMPLE })
+  flujo!: FlujoVenta;
+
+  @Column({ nullable: true })
+  caja_id!: string | null;
+
   @Column()
-  estado!: ESTADO;
-
-  @Column({ nullable: true })
-  caja_id!: string;
-
-  @Column({ nullable: true })
   sucursal_id!: string;
 
   @Column({ nullable: true })
-  cliente_id!: string;
+  cliente_id!: string | null;
+
+  @Column()
+  empleado_id!: string; // quien creó la venta
 
   @Column({ nullable: true })
-  usuario_id!: string;
+  cajero_id!: string | null; // quien cobró (puede ser distinto)
+
+  @Column({ nullable: true })
+  lista_precio_id!: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal!: number;
@@ -38,7 +59,7 @@ export class VentasModulo {
   total!: number;
 
   @Column({ nullable: true })
-  notas!: string;
+  notas!: string | null;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at!: Date;
