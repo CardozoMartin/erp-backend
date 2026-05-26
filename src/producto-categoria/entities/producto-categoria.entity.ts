@@ -34,7 +34,7 @@ export class ProductoCategoria {
   @JoinColumn({ name: 'padre_id' })
   padre!: ProductoCategoria | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   padre_id!: string | null;
 
   @OneToMany(() => ProductoCategoria, (categoria) => categoria.padre)

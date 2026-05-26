@@ -8,14 +8,14 @@ import * as bcrypt from 'bcrypt';
 import { RolesService } from 'src/roles/roles.service';
 import { Repository } from 'typeorm';
 import {
+  AsignarRolesDto,
   CrearEmpleadoDto,
   RespuestaEmpleadoDto,
-  AsignarRolesDto,
 } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
+import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 import { EmpleadoRol } from './entities/empleado-rol.entity';
 import { Empleado } from './entities/empleado.entity';
-import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 
 @Injectable()
 export class EmpleadosService {

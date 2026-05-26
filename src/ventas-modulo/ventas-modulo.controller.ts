@@ -1,45 +1,49 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-} from '@nestjs/common';
-import { VentasModuloService } from './ventas-modulo.service';
-import { CreateVentasModuloDto } from './dto/create-ventas-modulo.dto';
-import { UpdateVentasModuloDto } from './dto/update-ventas-modulo.dto';
+// ventas/ventas.controller.ts
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { VentasService } from './ventas-modulo.service';
+import { CobrarVentaDto, CrearVentaDto } from './dto/create-ventas-modulo.dto';
 
-@Controller('ventas-modulo')
-export class VentasModuloController {
-  constructor(private readonly ventasModuloService: VentasModuloService) {}
+
+@Controller('ventas')
+export class VentasController {
+  constructor(private readonly ventasService: VentasService) {}
 
   @Post()
-  create(@Body() createVentasModuloDto: CreateVentasModuloDto) {
-    return this.ventasModuloService.create(createVentasModuloDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.ventasModuloService.findAll();
+  crear(@Body() dto: CrearVentaDto) {
+    return this.ventasService.crear(dto);
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.ventasModuloService.findOne(id);
+    return this.ventasService.findOne(id);
   }
 
-  @Patch(':id')
-  update(
+  @Get('sucursal/:sucursalId')
+  findBySucursal(@Param('sucursalId') sucursalId: string) {
+    return this.ventasService.findBySucursal(sucursalId);
+  }
+
+  @Patch(':id/cobrar')
+  cobrar(@Param('id') id: string, @Body() dto: CobrarVentaDto) {
+    return this.ventasService.cobrar(id, dto);
+  }
+
+  @Patch(':id/convertir')
+  convertir(@Param('id') id: string, @Body('empleado_id') empleadoId: string) {
+    return this.ventasService.convertirCotizacion(id, empleadoId);
+  }
+
+  @Patch(':id/cancelar')
+  cancelar(
     @Param('id') id: string,
-    @Body() updateVentasModuloDto: UpdateVentasModuloDto,
+    @Body('empleado_id') empleadoId: string,
+    @Body('motivo') motivo?: string,
   ) {
-    return this.ventasModuloService.update(id, updateVentasModuloDto);
+    return this.ventasService.cancelar(id, empleadoId, motivo);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.ventasModuloService.remove(id);
+  @Patch(':id/despachar')
+  despachar(@Param('id') id: string, @Body('empleado_id') empleadoId: string) {
+    return this.ventasService.despachar(id, empleadoId);
   }
 }

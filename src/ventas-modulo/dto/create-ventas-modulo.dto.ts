@@ -1,64 +1,93 @@
-import { Type } from 'class-transformer';
+// ventas/dto/crear-venta.dto.ts
 import {
   IsArray,
   IsEnum,
-  IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
-  IsPositive,
   IsString,
+  IsUUID,
+  Min,
   ValidateNested,
 } from 'class-validator';
-import { ESTADO } from '../entities/ventas-modulo.entity';
+import { Type } from 'class-transformer';
+import { TipoDocumento } from '../enum/tipo-documento.enum';
 
-export class CreateVentaItemDto {
-  @IsString()
+export class CrearVentaItemDto {
+  @IsUUID()
   producto_id!: string;
 
+  @IsUUID()
   @IsOptional()
-  @IsString()
   variante_id?: string;
 
-  @IsInt()
-  @IsPositive()
+  @IsString()
+  @IsNotEmpty()
+  descripcion!: string;
+
+  @IsNumber()
+  @Min(0)
+  precio_unitario!: number;
+
+  @IsNumber()
+  @Min(1)
   cantidad!: number;
 
-  @IsOptional()
   @IsNumber()
-  precio_unitario?: number; // si no viene, se toma del producto
-
+  @Min(0)
   @IsOptional()
-  @IsNumber()
-  descuento_porcentaje?: number; // 0 por defecto
+  descuento_porcentaje?: number;
 }
 
-export class CreateVentasModuloDto {
+export class CrearVentaDto {
+  @IsEnum(TipoDocumento)
   @IsOptional()
-  @IsEnum(ESTADO)
-  estado?: ESTADO;
+  tipoDocumento?: TipoDocumento;
 
-  @IsOptional()
-  @IsString()
-  caja_id?: string;
+  @IsUUID()
+  sucursal_id!: string;
 
-  @IsOptional()
-  @IsString()
-  sucursal_id?: string;
+  @IsUUID()
+  empleado_id!: string;
 
+  @IsUUID()
   @IsOptional()
-  @IsString()
   cliente_id?: string;
 
+  @IsUUID()
   @IsOptional()
-  @IsString()
-  usuario_id?: string;
-
-  @IsOptional()
-  @IsString()
-  notas?: string;
+  lista_precio_id?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateVentaItemDto)
-  items!: CreateVentaItemDto[];
+  @Type(() => CrearVentaItemDto)
+  items!: CrearVentaItemDto[];
+
+  @IsString()
+  @IsOptional()
+  notas?: string;
+}
+
+// ventas/dto/cobrar-venta.dto.ts
+export class PagoDto {
+  @IsUUID()
+  medio_pago_id!: string;
+
+  @IsNumber()
+  @Min(0)
+  monto!: number;
+
+  @IsString()
+  @IsOptional()
+  referencia?: string;
+}
+
+export class CobrarVentaDto {
+  @IsUUID()
+  cajero_id!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PagoDto)
+  pagos!: PagoDto[];
 }

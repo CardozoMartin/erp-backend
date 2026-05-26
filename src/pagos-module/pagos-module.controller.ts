@@ -1,15 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { PagosModuleService } from './pagos-module.service';
-import { CreatePagosModuleDto } from './dto/create-pagos-module.dto';
+import { CrearMedioPagoDto } from './dto/create-pagos-module.dto';
 import { UpdatePagosModuleDto } from './dto/update-pagos-module.dto';
 
-@Controller('pagos-module')
+@Controller('pagos')
 export class PagosModuleController {
   constructor(private readonly pagosModuleService: PagosModuleService) {}
 
   @Post()
-  create(@Body() createPagosModuleDto: CreatePagosModuleDto) {
-    return this.pagosModuleService.create(createPagosModuleDto);
+  create(@Body() dto: CrearMedioPagoDto) {
+    return this.pagosModuleService.create(dto);
   }
 
   @Get()
@@ -17,18 +17,23 @@ export class PagosModuleController {
     return this.pagosModuleService.findAll();
   }
 
+  @Get('activos')
+  findActivos() {
+    return this.pagosModuleService.findActivos();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.pagosModuleService.findOne(+id);
+    return this.pagosModuleService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updatePagosModuleDto: UpdatePagosModuleDto) {
-    return this.pagosModuleService.update(+id, updatePagosModuleDto);
+  update(@Param('id') id: string, @Body() dto: UpdatePagosModuleDto) {
+    return this.pagosModuleService.update(id, dto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.pagosModuleService.remove(+id);
+  @Patch(':id/toggle')
+  toggleActivo(@Param('id') id: string) {
+    return this.pagosModuleService.toggleActivo(id);
   }
 }

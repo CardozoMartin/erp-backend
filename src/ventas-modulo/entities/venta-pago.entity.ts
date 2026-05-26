@@ -1,23 +1,34 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+// ventas/entities/venta-pago.entity.ts
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { VentasModulo } from './ventas-modulo.entity';
+import { MedioPago } from 'src/pagos-module/entities/medio-pago.entity';
 
-// venta-pago.entity.ts
 @Entity('venta_pago')
 export class VentaPago {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
-  venta_id!: string;
+  @ManyToOne(() => VentasModulo, (v) => v.pagos, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'venta_id' })
+  venta!: VentasModulo;
 
-  @Column()
-  medio_pago_id!: string; // ← FK a medios_pago (no string libre)
+  @ManyToOne(() => MedioPago, { eager: true })
+  @JoinColumn({ name: 'medio_pago_id' })
+  medioPago!: MedioPago;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   monto!: number;
 
-  @Column({ nullable: true })
-  referencia!: string | null; // nro transferencia, comprobante, etc
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  referencia!: string | null;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn()
   created_at!: Date;
 }

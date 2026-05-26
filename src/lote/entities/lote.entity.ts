@@ -30,7 +30,7 @@ export class Lote {
   @JoinColumn({ name: 'variante_id' })
   variante!: Variante;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   variante_id!: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })

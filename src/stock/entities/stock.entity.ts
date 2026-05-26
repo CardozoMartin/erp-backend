@@ -39,6 +39,7 @@ export class Stock {
   @JoinColumn({ name: 'producto_id' })
   producto!: Producto;
 
+  @Index('IDX_stock_producto_id')
   @Column()
   producto_id!: string;
 
@@ -51,7 +52,7 @@ export class Stock {
   variante!: Variante | null;
 
   @Index('IDX_stock_variante_id')
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   variante_id!: string | null;
 
   // Sucursal (null = stock general compartido entre sucursales) ───────────

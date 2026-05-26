@@ -27,7 +27,7 @@ export class Oferta {
   @JoinColumn({ name: 'variante_id' })
   variante!: Variante;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   variante_id!: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })

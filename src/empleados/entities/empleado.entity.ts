@@ -1,8 +1,8 @@
 // empleados/entities/empleado.entity.ts
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { EmpleadoPermiso } from './empleado-permiso.entity';
 import { EmpleadoRol } from './empleado-rol.entity';
 import { EmpleadoSucursal } from './empleado-sucursal.entity';
-import { EmpleadoPermiso } from './empleado-permiso.entity';
 
 @Entity('empleados')
 export class Empleado {
