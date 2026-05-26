@@ -21,6 +21,7 @@ import { PermisosModule } from './permisos/permisos.module';
 import { ProductoModule } from './producto/producto.module';
 import { ProductoPreciosModule } from './producto_precios/producto_precios.module';
 import { RolesModule } from './roles/roles.module';
+import { AppSeedService } from './seed/app-seed.service';
 import { StockModule } from './stock/stock.module';
 import { VarianteModule } from './variante/variante.module';
 
@@ -61,6 +62,6 @@ import { VarianteModule } from './variante/variante.module';
     ConfigPosModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AppSeedService],
 })
 export class AppModule {}

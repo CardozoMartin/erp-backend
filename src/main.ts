@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { AppSeedService } from './seed/app-seed.service';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -35,8 +37,12 @@ async function bootstrap() {
           errores: detalles,
         });
       },
-    }),
+      }),
   );
+
+  const appSeedService = app.get(AppSeedService);
+  await appSeedService.seedInitialData();
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

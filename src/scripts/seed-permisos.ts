@@ -2,8 +2,7 @@ import 'dotenv/config';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
-import { permisosSeed } from '../permisos/permisos-seed';
-import { PermisosService } from '../permisos/permisos.service';
+import { AppSeedService } from '../seed/app-seed.service';
 
 async function bootstrap() {
   const logger = new Logger('SeedPermisos');
@@ -12,17 +11,9 @@ async function bootstrap() {
   });
 
   try {
-    const permisosService = app.get(PermisosService);
-    const { creados, existentes } =
-      await permisosService.createMissing(permisosSeed);
-
-    logger.log(`Permisos analizados: ${permisosSeed.length}`);
-    logger.log(`Permisos existentes: ${existentes.length}`);
-    logger.log(`Permisos creados: ${creados.length}`);
-
-    creados.forEach((permiso) => {
-      logger.log(`Creado: ${permiso.clave} - ${permiso.nombre}`);
-    });
+    const appSeedService = app.get(AppSeedService);
+    await appSeedService.seedInitialData(true);
+    logger.log('Seed inicial ejecutado correctamente');
   } finally {
     await app.close();
   }
@@ -30,6 +21,6 @@ async function bootstrap() {
 
 void bootstrap().catch((error) => {
   const logger = new Logger('SeedPermisos');
-  logger.error('No se pudieron crear los permisos faltantes', error);
+  logger.error('No se pudo ejecutar el seed inicial', error);
   process.exit(1);
 });

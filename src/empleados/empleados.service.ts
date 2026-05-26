@@ -83,8 +83,18 @@ export class EmpleadosService {
     return this.buildRespuesta(empleadoCompleto);
   }
 
-  findAll() {
-    return `This action returns all empleados`;
+  async findAll(page:number=1, limit:number=30) {
+   const [empleados, total] = await this.empleadosRepo.findAndCount({
+      skip: (page - 1) * limit,
+      take: limit,
+      relations: ['empleadoRoles', 'empleadoRoles.rol', 'sucursales', 'sucursales.sucursal'],
+    });
+    return {
+      data: empleados.map((e) => this.buildRespuesta(e)),
+      total,
+      page,
+      lastPage: Math.ceil(total / limit),
+    };
   }
 
   findOne(id: string) {

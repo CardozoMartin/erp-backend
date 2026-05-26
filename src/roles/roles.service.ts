@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { PermisosService } from 'src/permisos/permisos.service';
 import { In, Repository } from 'typeorm';
 import { CrearRoleDto } from './dto/create-role.dto';
+import { RoleSeed } from './roles-seed';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { Role } from './entities/role.entity';
 
@@ -104,5 +105,87 @@ export class RolesService {
     const rol = await this.findOne(id);
     rol.activo = !rol.activo;
     return this.roleRepository.save(rol);
+  }
+
+  async syncSeedRoles(seedRoles: RoleSeed[]): Promise<{
+    creados: Role[];
+    actualizados: Role[];
+    sinCambios: Role[];
+  }> {
+    if (!seedRoles.length) {
+      return { creados: [], actualizados: [], sinCambios: [] };
+    }
+
+    const permisos = await this.permisosService.findAll();
+    const permisosPorClave = new Map(
+      permisos.map((permiso) => [permiso.clave, permiso]),
+    );
+
+    const rolesExistentes = await this.roleRepository.find({
+      relations: ['permisos'],
+    });
+    const rolesPorNombre = new Map(
+      rolesExistentes.map((rol) => [rol.nombre, rol]),
+    );
+
+    const creados: Role[] = [];
+    const actualizados: Role[] = [];
+    const sinCambios: Role[] = [];
+
+    for (const seedRole of seedRoles) {
+      const permisosRol = seedRole.permisosClaves.map((clave) => {
+        const permiso = permisosPorClave.get(clave);
+        if (!permiso) {
+          throw new ConflictException(
+            `No existe el permiso con clave "${clave}" para el rol "${seedRole.nombre}"`,
+          );
+        }
+        return permiso;
+      });
+
+      const existente = rolesPorNombre.get(seedRole.nombre);
+
+      if (!existente) {
+        const nuevoRol = this.roleRepository.create({
+          nombre: seedRole.nombre,
+          descripcion: seedRole.descripcion,
+          rutaInicio: seedRole.rutaInicio,
+          activo: true,
+          permisos: permisosRol,
+        });
+        creados.push(await this.roleRepository.save(nuevoRol));
+        continue;
+      }
+
+      const permisosActuales = [...existente.permisos]
+        .map((permiso) => permiso.id)
+        .sort();
+      const permisosSeedIds = permisosRol.map((permiso) => permiso.id).sort();
+      const mismosPermisos =
+        permisosActuales.length === permisosSeedIds.length &&
+        permisosActuales.every(
+          (permisoId, index) => permisoId === permisosSeedIds[index],
+        );
+
+      const requiereActualizacion =
+        existente.descripcion !== seedRole.descripcion ||
+        existente.rutaInicio !== seedRole.rutaInicio ||
+        existente.activo !== true ||
+        !mismosPermisos;
+
+      if (!requiereActualizacion) {
+        sinCambios.push(existente);
+        continue;
+      }
+
+      existente.descripcion = seedRole.descripcion;
+      existente.rutaInicio = seedRole.rutaInicio;
+      existente.activo = true;
+      existente.permisos = permisosRol;
+
+      actualizados.push(await this.roleRepository.save(existente));
+    }
+
+    return { creados, actualizados, sinCambios };
   }
 }

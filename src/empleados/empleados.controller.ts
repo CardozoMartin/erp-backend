@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CrearEmpleadoDto, AsignarRolesDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
@@ -26,8 +27,11 @@ export class EmpleadosController {
   }
 
   @Get()
-  findAll() {
-    return this.empleadosService.findAll();
+  findAll(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '30',
+  ) {
+    return this.empleadosService.findAll(Number(page), Number(limit)); 
   }
 
   @Get(':id')
