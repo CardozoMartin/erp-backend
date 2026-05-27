@@ -1,18 +1,28 @@
 import 'dotenv/config';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { AppSeedService } from './seed/app-seed.service';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { PermisosGuard } from './auth/guards/permisos.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Configuración de CORS - para el frontend en localhost:5173
+  // Configuración de CORS
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
+
+  // Guards globales — protegen TODO por defecto
+  // Las rutas públicas usan @Publico() para saltear el JWT
+  const reflector = app.get(Reflector);
+  app.useGlobalGuards(
+    new JwtAuthGuard(reflector),
+    new PermisosGuard(reflector),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -31,13 +41,16 @@ async function bootstrap() {
             hijos: child.children,
           })),
         }));
-        console.error('[ValidationPipe] Error de validacion:', JSON.stringify(detalles, null, 2));
+        console.error(
+          '[ValidationPipe] Error de validacion:',
+          JSON.stringify(detalles, null, 2),
+        );
         return new BadRequestException({
           message: 'Error de validacion',
           errores: detalles,
         });
       },
-      }),
+    }),
   );
 
   const appSeedService = app.get(AppSeedService);

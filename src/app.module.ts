@@ -24,6 +24,7 @@ import { RolesModule } from './roles/roles.module';
 import { AppSeedService } from './seed/app-seed.service';
 import { StockModule } from './stock/stock.module';
 import { VarianteModule } from './variante/variante.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { VarianteModule } from './variante/variante.module';
     PermisosModule,
     RolesModule,
     ConfigPosModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService, AppSeedService],
