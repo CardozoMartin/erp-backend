@@ -67,6 +67,13 @@ export class RolesService {
     return rol;
   }
 
+  async findByName(nombre: string): Promise<Role | null> {
+    return this.roleRepository.findOne({
+      where: { nombre },
+      relations: ['permisos'],
+    });
+  }
+
   //servicio para buscar todos los roles
   async findAll(): Promise<Role[]> {
     return await this.roleRepository.find({ relations: ['permisos'] });

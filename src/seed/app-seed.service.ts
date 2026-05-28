@@ -9,6 +9,8 @@ import { permisosSeed } from 'src/permisos/permisos-seed';
 import { PermisosService } from 'src/permisos/permisos.service';
 import { rolesSeed } from 'src/roles/roles-seed';
 import { RolesService } from 'src/roles/roles.service';
+import { CrearEmpleadoDto } from 'src/empleados/dto/create-empleado.dto';
+import { EmpleadosService } from 'src/empleados/empleados.service';
 
 const mediosPagoSeed: CrearMedioPagoDto[] = [
   {
@@ -62,6 +64,7 @@ export class AppSeedService {
     private readonly permisosService: PermisosService,
     private readonly pagosService: PagosModuleService,
     private readonly rolesService: RolesService,
+    private readonly empleadosService: EmpleadosService,
   ) {}
 
   async seedInitialData(logResults = true): Promise<SeedResult> {
@@ -83,6 +86,7 @@ export class AppSeedService {
     }
 
     const rolesResult = await this.rolesService.syncSeedRoles(rolesSeed);
+    await this.seedAdminUser(logResults);
 
     const result: SeedResult = {
       permisos: {
@@ -116,5 +120,29 @@ export class AppSeedService {
     }
 
     return result;
+  }
+
+  private async seedAdminUser(logResults: boolean) {
+    const adminEmail = process.env.ADMIN_EMAIL?.trim() || 'martin@gmail.com';
+    if (await this.empleadosService.findByEmail(adminEmail)) return;
+
+    const adminRole = await this.rolesService.findByName('Admin');
+    if (!adminRole) return;
+
+    const adminDto: CrearEmpleadoDto = {
+      nombreCompleto: process.env.ADMIN_NOMBRE || 'Martin Cardozo',
+      email: adminEmail,
+      contrasena: process.env.ADMIN_PASSWORD || 'Holamundo123!',
+      telefono: process.env.ADMIN_TELEFONO || '+54 11 1234 5678',
+      direccion:
+        process.env.ADMIN_DIRECCION || 'Av. Corrientes 1234, Buenos Aires',
+      cargo: process.env.ADMIN_CARGO || 'Admin',
+      rolesIds: [adminRole.id],
+    };
+
+    await this.empleadosService.create(adminDto);
+    if (logResults) {
+      this.logger.log(`Admin inicial creado: ${adminEmail}`);
+    }
   }
 }
