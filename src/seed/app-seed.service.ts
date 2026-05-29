@@ -138,9 +138,11 @@ export class AppSeedService {
     await this.seedAdminUser(logResults);
 
     const rolesPorNombre = new Map(
-      [...rolesResult.creados, ...rolesResult.actualizados, ...rolesResult.sinCambios].map(
-        (rol) => [rol.nombre, rol],
-      ),
+      [
+        ...rolesResult.creados,
+        ...rolesResult.actualizados,
+        ...rolesResult.sinCambios,
+      ].map((rol) => [rol.nombre, rol]),
     );
 
     const adminRole = rolesPorNombre.get('Admin');
@@ -163,7 +165,9 @@ export class AppSeedService {
     for (const empleado of empleadosSeed) {
       const role = rolesPorNombre.get(empleado.roleName);
       if (!role) {
-        throw new Error(`No se encontró el rol ${empleado.roleName} para el seed de empleado`);
+        throw new Error(
+          `No se encontró el rol ${empleado.roleName} para el seed de empleado`,
+        );
       }
       seededEmpleados.push({
         nombreCompleto: empleado.nombreCompleto,
@@ -183,7 +187,9 @@ export class AppSeedService {
     for (const seedEmpleado of seededEmpleados) {
       const roleId = seedEmpleado.rolesIds?.[0];
       if (!roleId) {
-        throw new Error(`No se encontró el rol para el empleado ${seedEmpleado.email}`);
+        throw new Error(
+          `No se encontró el rol para el empleado ${seedEmpleado.email}`,
+        );
       }
 
       const empleado = await this.empleadosRepo.findOne({
