@@ -102,6 +102,10 @@ export class EmpleadosService {
     };
   }
 
+  async findByEmail(email: string) {
+    return this.empleadosRepo.findOne({ where: { email } });
+  }
+
   findOne(id: string) {
     return `This action returns a #${id} empleado`;
   }

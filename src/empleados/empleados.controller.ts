@@ -11,7 +11,10 @@ import {
 import { CrearEmpleadoDto, AsignarRolesDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { EmpleadosService } from './empleados.service';
-import { AsignarSucursalDto, DesasignarSucursalDto } from './dto/empleado-sucursal.dto';
+import {
+  AsignarSucursalDto,
+  DesasignarSucursalDto,
+} from './dto/empleado-sucursal.dto';
 import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 
 @Controller('empleados')

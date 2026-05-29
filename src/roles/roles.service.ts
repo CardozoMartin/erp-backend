@@ -67,6 +67,13 @@ export class RolesService {
     return rol;
   }
 
+  async findByName(nombre: string): Promise<Role | null> {
+    return this.roleRepository.findOne({
+      where: { nombre },
+      relations: ['permisos'],
+    });
+  }
+
   //servicio para buscar todos los roles
   async findAll(): Promise<Role[]> {
     return await this.roleRepository.find({ relations: ['permisos'] });
@@ -87,7 +94,14 @@ export class RolesService {
     }
 
     if (dto.permisosIds) {
-      rol.permisos = await this.permisosService.findByIds(dto.permisosIds);
+      const permisosNuevos = await this.permisosService.findByIds(
+        dto.permisosIds,
+      );
+      const permisosMap = new Map(
+        rol.permisos.map((permiso) => [permiso.id, permiso]),
+      );
+      permisosNuevos.forEach((permiso) => permisosMap.set(permiso.id, permiso));
+      rol.permisos = Array.from(permisosMap.values());
     }
 
     if (dto.nombre) rol.nombre = dto.nombre;
