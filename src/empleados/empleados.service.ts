@@ -8,14 +8,14 @@ import * as bcrypt from 'bcrypt';
 import { RolesService } from 'src/roles/roles.service';
 import { Repository } from 'typeorm';
 import {
+  AsignarRolesDto,
   CrearEmpleadoDto,
   RespuestaEmpleadoDto,
-  AsignarRolesDto,
 } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
+import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 import { EmpleadoRol } from './entities/empleado-rol.entity';
 import { Empleado } from './entities/empleado.entity';
-import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 
 @Injectable()
 export class EmpleadosService {
@@ -83,16 +83,69 @@ export class EmpleadosService {
     return this.buildRespuesta(empleadoCompleto);
   }
 
-  findAll() {
-    return `This action returns all empleados`;
+  async findAll(page: number = 1, limit: number = 30) {
+    const [empleados, total] = await this.empleadosRepo.findAndCount({
+      skip: (page - 1) * limit,
+      take: limit,
+      relations: [
+        'empleadoRoles',
+        'empleadoRoles.rol',
+        'sucursales',
+        'sucursales.sucursal',
+      ],
+    });
+    return {
+      data: empleados.map((e) => this.buildRespuesta(e)),
+      total,
+      page,
+      lastPage: Math.ceil(total / limit),
+    };
+  }
+
+  async findByEmail(email: string) {
+    return this.empleadosRepo.findOne({ where: { email } });
   }
 
   findOne(id: string) {
     return `This action returns a #${id} empleado`;
   }
 
-  update(id: string, updateEmpleadoDto: UpdateEmpleadoDto) {
-    return `This action updates a #${id} empleado`;
+  async update(
+    id: string,
+    updateEmpleadoDto: UpdateEmpleadoDto,
+  ): Promise<RespuestaEmpleadoDto> {
+    const empleado = await this.empleadosRepo.findOne({ where: { id } });
+    if (!empleado) {
+      throw new NotFoundException(`Empleado ${id} no encontrado`);
+    }
+
+    const { rolesIds, sucursalId, esSucursalPrincipal, ...empleadoData } =
+      updateEmpleadoDto;
+
+    if (updateEmpleadoDto.contrasena) {
+      empleadoData.contrasena = await bcrypt.hash(
+        updateEmpleadoDto.contrasena,
+        10,
+      );
+    }
+
+    const empleadoActualizado = this.empleadosRepo.merge(empleado, empleadoData);
+    await this.empleadosRepo.save(empleadoActualizado);
+
+    if (rolesIds?.length) {
+      return this.asignarRoles(id, { rolesIds });
+    }
+
+    if (sucursalId) {
+      await this.empleadoSucursalesService.asignar(
+        id,
+        sucursalId,
+        esSucursalPrincipal ?? true,
+      );
+    }
+
+    const empleadoCompleto = await this.cargarEmpleadoCompleto(id);
+    return this.buildRespuesta(empleadoCompleto);
   }
 
   remove(id: string) {

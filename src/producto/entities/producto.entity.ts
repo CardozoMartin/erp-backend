@@ -72,7 +72,7 @@ export class Producto {
   @JoinColumn({ name: 'categoria_id' })
   categoria!: ProductoCategoria | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   categoria_id!: string | null;
 
   @OneToMany(() => Variante, (variante) => variante.producto, { cascade: true })
@@ -103,7 +103,7 @@ export class Producto {
   @JoinColumn({ name: 'marca_id' })
   marca!: MarcaProducto | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   marca_id!: string | null;
 
   @CreateDateColumn()

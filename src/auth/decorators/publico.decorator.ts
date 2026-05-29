@@ -1,0 +1,4 @@
+// auth/decorators/publico.decorator.ts
+import { SetMetadata } from '@nestjs/common';
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Publico = () => SetMetadata(IS_PUBLIC_KEY, true);
