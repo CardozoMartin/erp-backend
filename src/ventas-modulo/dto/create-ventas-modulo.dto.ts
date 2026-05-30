@@ -45,10 +45,12 @@ export class CrearVentaDto {
   tipoDocumento?: TipoDocumento;
 
   @IsUUID()
-  sucursal_id!: string;
+  @IsOptional()
+  sucursal_id?: string;
 
   @IsUUID()
-  empleado_id!: string;
+  @IsOptional()
+  empleado_id?: string;
 
   @IsUUID()
   @IsOptional()
@@ -84,7 +86,8 @@ export class PagoDto {
 
 export class CobrarVentaDto {
   @IsUUID()
-  cajero_id!: string;
+  @IsOptional()
+  cajero_id?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

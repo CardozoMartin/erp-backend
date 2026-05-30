@@ -1,8 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Sucursal } from './entities/sucursal.entity';
-import { CreateSucursalDto, UpdateSucursalDto } from './dto/create-sucursal.dto';
+import {
+  Sucursal,
+  TipoImpresora,
+  AnchoTicket,
+} from './entities/sucursal.entity';
+import {
+  CreateSucursalDto,
+  UpdateSucursalDto,
+} from './dto/create-sucursal.dto';
 
 @Injectable()
 export class SucursalService {
@@ -27,7 +34,22 @@ export class SucursalService {
     const sucursal = this.sucursalRepo.create({
       ...dto,
       direccion: dto.direccion ?? null,
+      localidad: dto.localidad ?? null,
+      provincia: dto.provincia ?? null,
+      codigoPostal: dto.codigoPostal ?? null,
       telefono: dto.telefono ?? null,
+      email: dto.email ?? null,
+      cuit: dto.cuit ?? null,
+      razonSocial: dto.razonSocial ?? null,
+      condicionIva: dto.condicionIva ?? null,
+      puntoVentaArca: dto.puntoVentaArca ?? null,
+      ingresosBrutos: dto.ingresosBrutos ?? null,
+      inicioActividades: dto.inicioActividades ?? null,
+      logoUrl: dto.logoUrl ?? null,
+      mensajePieTicket: dto.mensajePieTicket ?? null,
+      emailComprobantes: dto.emailComprobantes ?? null,
+      tipoImpresora: dto.tipoImpresora ?? TipoImpresora.TERMICA,
+      anchoTicket: dto.anchoTicket ?? AnchoTicket.MM_80,
       activa: dto.activa ?? true,
     });
     return this.sucursalRepo.save(sucursal);

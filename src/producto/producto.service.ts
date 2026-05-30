@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ProductoPreciosService } from 'src/producto_precios/producto_precios.service';
-import { DataSource, Repository, IsNull } from 'typeorm';
+import { DataSource, Repository, IsNull, In } from 'typeorm';
 import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
 import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
 import { Imagen } from '../imagen/entities/imagen.entity';
@@ -19,6 +20,10 @@ import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { Producto, UnidadVenta } from './entities/producto.entity';
 import { UpdateStockDto } from 'src/stock/dto/update-stock.dto';
+import { ProductoSucursal } from './entities/producto-sucursal-entity';
+import { Sucursal } from 'src/sucursal/entities/sucursal.entity';
+import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
+import { SucursalService } from 'src/sucursal/sucursal.service';
 
 @Injectable()
 export class ProductoService {
@@ -54,9 +59,34 @@ export class ProductoService {
     @InjectRepository(MarcaProducto)
     private readonly marcaRepo: Repository<MarcaProducto>,
 
+    @InjectRepository(ProductoSucursal)
+    private readonly productoSucursalRepo: Repository<ProductoSucursal>,
+
+    @InjectRepository(Sucursal)
+    private readonly sucursalRepo: Repository<Sucursal>,
+
+    @InjectRepository(ProductoPrecio)
+    private readonly productoPrecioRepo: Repository<ProductoPrecio>,
+
     private readonly productoPrecioService: ProductoPreciosService,
+    private readonly sucursalService: SucursalService,
     private readonly dataSource: DataSource,
   ) {}
+
+  private normalizarPrecios<T extends Record<string, any>>(data: T): T {
+    const precioCosto = Number(data.precio_costo ?? 0);
+    const precioVenta = Number(data.precio_venta ?? data.precio_base ?? 0);
+    const margen =
+      precioCosto > 0 ? ((precioVenta - precioCosto) / precioCosto) * 100 : 0;
+
+    return {
+      ...data,
+      precio_costo: precioCosto,
+      precio_venta: precioVenta,
+      precio_base: precioVenta,
+      margen_ganancia: Number(margen.toFixed(2)),
+    };
+  }
 
   private validateWholeUnitStock(
     producto: Pick<Producto, 'unidad_venta' | 'es_fraccionable'>,
@@ -76,10 +106,16 @@ export class ProductoService {
   }
 
   //Servicio para crear Producto Completo con variantes, atributos, stock, lotes, imagenes y ofertas en una sola transaccion
-  async create(createProductoDto: CreateProductoDto): Promise<Producto> {
+  async create(
+    createProductoDto: CreateProductoDto,
+    sucursalActivaId?: string,
+  ): Promise<Producto> {
     createProductoDto.nombre = createProductoDto.nombre.trim();
     createProductoDto.codigo_barras =
       createProductoDto.codigo_barras?.trim() || null;
+    const todasSucursales = createProductoDto.todas_sucursales ?? true;
+    const sucursalesHabilitadasIds =
+      createProductoDto.sucursales_habilitadas_ids ?? [];
 
     //1.- validamos que el codigo de barras no exista en otro producto
     if (createProductoDto.codigo_barras) {
@@ -300,8 +336,13 @@ export class ProductoService {
     await queryRunner.startTransaction();
 
     try {
+      const {
+        todas_sucursales: _todasSucursales,
+        sucursales_habilitadas_ids: _sucursalesHabilitadasIds,
+        ...productoBaseDto
+      } = createProductoDto;
       const producto = this.productoRepo.create({
-        ...createProductoDto,
+        ...this.normalizarPrecios(productoBaseDto),
         tiene_variantes: tieneVariantes,
         variantes: undefined,
         stock: undefined,
@@ -335,7 +376,7 @@ export class ProductoService {
             ...stockDto,
             producto: producto,
             variante_id: null,
-            sucursal_id: stockDto.sucursal_id ?? null,
+            sucursal_id: stockDto.sucursal_id ?? sucursalActivaId ?? null,
           } as Partial<Stock>);
           await queryRunner.manager.save(stock);
         }
@@ -347,7 +388,7 @@ export class ProductoService {
             ...loteDto,
             producto: producto,
             variante_id: null,
-            sucursal_id: loteDto.sucursal_id ?? null,
+            sucursal_id: loteDto.sucursal_id ?? sucursalActivaId ?? null,
           } as Partial<Lote>);
           await queryRunner.manager.save(lote);
         }
@@ -406,7 +447,7 @@ export class ProductoService {
                 ...stockDto,
                 producto: producto,
                 variante: variante,
-                sucursal_id: stockDto.sucursal_id ?? null,
+                sucursal_id: stockDto.sucursal_id ?? sucursalActivaId ?? null,
               } as Partial<Stock>);
               await queryRunner.manager.save(stock);
             }
@@ -418,7 +459,7 @@ export class ProductoService {
                 ...loteDto,
                 producto: producto,
                 variante: variante,
-                sucursal_id: loteDto.sucursal_id ?? null,
+                sucursal_id: loteDto.sucursal_id ?? sucursalActivaId ?? null,
               } as Partial<Lote>);
               await queryRunner.manager.save(lote);
             }
@@ -456,6 +497,25 @@ export class ProductoService {
           });
         }
       }
+
+      // Asignar el producto a las sucursales elegidas desde el alta.
+      const sucursales = await this.sucursalRepo.find({
+        where:
+          todasSucursales || sucursalesHabilitadasIds.length === 0
+            ? { activa: true }
+            : { activa: true, id: In(sucursalesHabilitadasIds) },
+      });
+
+      if (sucursales.length > 0) {
+        for (const sucursal of sucursales) {
+          const productoSucursal = this.productoSucursalRepo.create({
+            producto,
+            sucursal,
+            activo: true,
+          });
+          await queryRunner.manager.save(productoSucursal);
+        }
+      }
       await queryRunner.commitTransaction();
       return this.findOne(producto.id);
     } catch (error) {
@@ -466,50 +526,102 @@ export class ProductoService {
     }
   }
 
-  async findAll(page: number = 1, limit: number = 30) {
-    const [productos, total] = await this.productoRepo.findAndCount({
-      relations: [
-        'categoria',
-        'variantes',
-        'variantes.atributos',
+  // Obtener productos filtrados por sucursales activas
+  async findAll(sucursalIds: string[]): Promise<Producto[]> {
+    return this.productoRepo
+      .createQueryBuilder('producto')
+      .innerJoin(
+        'producto.sucursales',
+        'ps',
+        'ps.sucursal_id IN (:...sucursalIds) AND ps.activo = true',
+        { sucursalIds },
+      )
+      .leftJoinAndSelect('producto.categoria', 'categoria')
+      .leftJoinAndSelect('producto.marca', 'marca')
+      .leftJoinAndSelect(
+        'producto.stock',
         'stock',
+        'stock.sucursal_id IN (:...sucursalIds)',
+        { sucursalIds },
+      )
+      .leftJoinAndSelect(
+        'producto.lotes',
         'lotes',
-        'imagenes',
-        'ofertas',
-        'atributos',
-        'precios',
-        'marca',
-      ],
-      order: { nombre: 'ASC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
-    return {
-      data: productos,
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    };
+        'lotes.sucursal_id IN (:...sucursalIds)',
+        { sucursalIds },
+      )
+      .leftJoinAndSelect(
+        'producto.precios',
+        'precio',
+        'precio.sucursal_id IN (:...sucursalIds) OR precio.sucursal_id IS NULL',
+        { sucursalIds },
+      )
+      .where('producto.activo = true')
+      .getMany();
   }
 
-  async findOne(id: string): Promise<Producto> {
-    const producto = await this.productoRepo.findOne({
-      where: { id },
-      relations: [
-        'categoria',
-        'variantes',
-        'variantes.atributos',
-        'variantes.stock',
-        'variantes.lotes',
-        'variantes.imagenes',
-        'variantes.ofertas',
-        'stock',
-        'lotes',
-        'imagenes',
-        'ofertas',
-        'atributos',
-        'precios',
-        'marca',
-      ],
-    });
+  async findOne(id: string, sucursalIds?: string[]): Promise<Producto> {
+    const query = this.productoRepo
+      .createQueryBuilder('producto')
+      .leftJoinAndSelect('producto.categoria', 'categoria')
+      .leftJoinAndSelect('producto.marca', 'marca')
+      .leftJoinAndSelect('producto.variantes', 'variantes')
+      .leftJoinAndSelect('variantes.atributos', 'varianteAtributos')
+      .leftJoinAndSelect('variantes.imagenes', 'varianteImagenes')
+      .leftJoinAndSelect('variantes.ofertas', 'varianteOfertas')
+      .leftJoinAndSelect('producto.imagenes', 'imagenes')
+      .leftJoinAndSelect('producto.ofertas', 'ofertas')
+      .leftJoinAndSelect('producto.atributos', 'atributos')
+      .where('producto.id = :id', { id });
+
+    if (sucursalIds?.length) {
+      query
+        .innerJoin(
+          'producto.sucursales',
+          'ps',
+          'ps.sucursal_id IN (:...sucursalIds) AND ps.activo = true',
+          { sucursalIds },
+        )
+        .leftJoinAndSelect(
+          'producto.stock',
+          'stock',
+          'stock.sucursal_id IN (:...sucursalIds)',
+          { sucursalIds },
+        )
+        .leftJoinAndSelect(
+          'variantes.stock',
+          'varianteStock',
+          'varianteStock.sucursal_id IN (:...sucursalIds)',
+          { sucursalIds },
+        )
+        .leftJoinAndSelect(
+          'producto.lotes',
+          'lotes',
+          'lotes.sucursal_id IN (:...sucursalIds)',
+          { sucursalIds },
+        )
+        .leftJoinAndSelect(
+          'variantes.lotes',
+          'varianteLotes',
+          'varianteLotes.sucursal_id IN (:...sucursalIds)',
+          { sucursalIds },
+        )
+        .leftJoinAndSelect(
+          'producto.precios',
+          'precios',
+          'precios.sucursal_id IN (:...sucursalIds) OR precios.sucursal_id IS NULL',
+          { sucursalIds },
+        );
+    } else {
+      query
+        .leftJoinAndSelect('producto.stock', 'stock')
+        .leftJoinAndSelect('variantes.stock', 'varianteStock')
+        .leftJoinAndSelect('producto.lotes', 'lotes')
+        .leftJoinAndSelect('variantes.lotes', 'varianteLotes')
+        .leftJoinAndSelect('producto.precios', 'precios');
+    }
+
+    const producto = await query.getOne();
     if (!producto) {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
@@ -601,7 +713,7 @@ export class ProductoService {
         atributos,
         ...productoData
       } = updateProductoDto;
-      Object.assign(producto, productoData);
+      Object.assign(producto, this.normalizarPrecios(productoData));
       await queryRunner.manager.save(producto);
 
       // 6. Sync stock a nivel producto (delete & recreate)
@@ -953,5 +1065,52 @@ export class ProductoService {
 
     stock.cantidad = nuevaCantidad;
     return this.stockRepo.save(stock);
+  }
+  // Activar/desactivar producto en una sucursal específica
+  async toggleSucursal(
+    productoId: string,
+    sucursalId: string,
+  ): Promise<ProductoSucursal> {
+    const registro = await this.productoSucursalRepo.findOne({
+      where: { producto_id: productoId, sucursal_id: sucursalId },
+    });
+
+    if (!registro) {
+      throw new NotFoundException(
+        `El producto no está asignado a esa sucursal`,
+      );
+    }
+
+    registro.activo = !registro.activo;
+    return this.productoSucursalRepo.save(registro);
+  }
+
+  // Consultar stock de otra sucursal
+  async stockEnSucursal(
+    productoId: string,
+    sucursalId: string,
+    sucursalActivaId?: string,
+  ): Promise<{ sucursal: string; cantidad: number; precio: number | null }> {
+    if (sucursalActivaId && sucursalId !== sucursalActivaId) {
+      throw new ForbiddenException(
+        'No podes consultar datos de una sucursal distinta a la activa',
+      );
+    }
+
+    const sucursal = await this.sucursalService.findOne(sucursalId);
+
+    const stock = await this.stockRepo.findOne({
+      where: { producto_id: productoId, sucursal_id: sucursalId },
+    });
+
+    const precio = await this.productoPrecioRepo.findOne({
+      where: { producto_id: productoId, sucursal_id: sucursalId },
+    });
+
+    return {
+      sucursal: sucursal.nombre,
+      cantidad: stock?.cantidad ?? 0,
+      precio: precio?.precio ?? null,
+    };
   }
 }

@@ -237,6 +237,20 @@ export class CreateProductoDto {
   precio_base!: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio_costo?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio_venta?: number;
+
+  @IsOptional()
+  @IsNumber()
+  margen_ganancia?: number;
+
+  @IsOptional()
   @IsEnum(UnidadVenta)
   unidad_venta?: UnidadVenta;
 
@@ -302,6 +316,15 @@ export class CreateProductoDto {
   @ValidateNested({ each: true })
   @Type(() => CreateProductoPrecioDto)
   precios?: CreateProductoPrecioDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  todas_sucursales?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  sucursales_habilitadas_ids?: string[];
 }
 
 // ─── DTO de actualización con variantes actualizables ───
@@ -336,6 +359,20 @@ export class UpdateProductoDto {
   @IsNumber()
   @Min(0)
   precio_base?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio_costo?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio_venta?: number;
+
+  @IsOptional()
+  @IsNumber()
+  margen_ganancia?: number;
 
   @IsOptional()
   @IsEnum(UnidadVenta)

@@ -13,6 +13,15 @@ import { RolesService } from 'src/roles/roles.service';
 import { CrearEmpleadoDto } from 'src/empleados/dto/create-empleado.dto';
 import { EmpleadosService } from 'src/empleados/empleados.service';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
+import { permisosSeed } from 'src/permisos/permisos-seed';
+import {
+  AnchoTicket,
+  CondicionIva,
+  Sucursal,
+  TipoImpresora,
+} from 'src/sucursal/entities/sucursal.entity';
+import { SucursalService } from 'src/sucursal/sucursal.service';
+import { EmpleadoSucursal } from 'src/empleados/entities/empleado-sucursal.entity';
 
 const mediosPagoSeed: CrearMedioPagoDto[] = [
   {
@@ -55,6 +64,10 @@ type SeedResult = {
     creados: number;
     actualizados: number;
     sinCambios: number;
+  };
+  sucursales: {
+    creadas: number;
+    existentes: number;
   };
   empleadosSeed: {
     creados: number;
@@ -112,8 +125,11 @@ export class AppSeedService {
     private readonly pagosService: PagosModuleService,
     private readonly rolesService: RolesService,
     private readonly empleadosService: EmpleadosService,
+    private readonly sucursalService: SucursalService,
     @InjectRepository(Empleado)
     private readonly empleadosRepo: Repository<Empleado>,
+    @InjectRepository(EmpleadoSucursal)
+    private readonly empleadoSucursalRepo: Repository<EmpleadoSucursal>,
   ) {}
 
   async seedInitialData(logResults = true): Promise<SeedResult> {
@@ -134,8 +150,23 @@ export class AppSeedService {
       creadosPagos.push(creado);
     }
 
-    const rolesResult = await this.rolesService.syncSeedRoles(rolesSeed);
-    await this.seedAdminUser(logResults);
+    const sucursalesResult = await this.seedSucursales();
+    const sucursalPrincipal = sucursalesResult.sucursales[0];
+    const sucursalesAdmin = sucursalesResult.sucursales;
+
+    const rolesSeedConAdminCompleto = rolesSeed.map((rol) =>
+      rol.nombre === 'Admin'
+        ? {
+            ...rol,
+            rutaInicio: '/',
+            permisosClaves: permisosSeed.map((permiso) => permiso.clave),
+          }
+        : rol,
+    );
+
+    const rolesResult =
+      await this.rolesService.syncSeedRoles(rolesSeedConAdminCompleto);
+    await this.seedAdminUser(logResults, sucursalPrincipal, sucursalesAdmin);
 
     const rolesPorNombre = new Map(
       [
@@ -159,6 +190,8 @@ export class AppSeedService {
         direccion: 'Oficina Principal',
         cargo: 'Admin',
         rolesIds: [adminRole.id],
+        sucursalId: sucursalPrincipal?.id,
+        esSucursalPrincipal: true,
       },
     ];
 
@@ -177,6 +210,8 @@ export class AppSeedService {
         direccion: empleado.direccion,
         cargo: empleado.cargo,
         rolesIds: [role.id],
+        sucursalId: sucursalPrincipal?.id,
+        esSucursalPrincipal: true,
       });
     }
 
@@ -199,6 +234,18 @@ export class AppSeedService {
 
       if (!empleado) {
         await this.empleadosService.create(seedEmpleado);
+        const empleadoCreado = await this.empleadosRepo.findOne({
+          where: { email: seedEmpleado.email },
+        });
+        if (empleadoCreado && sucursalPrincipal) {
+          await this.asignarSucursalesSeed(
+            empleadoCreado.id,
+            seedEmpleado.email === 'martin@gmail.com'
+              ? sucursalesAdmin
+              : [sucursalPrincipal],
+            sucursalPrincipal.id,
+          );
+        }
         empleadosCreados += 1;
         empleadosRolAsignados += 1;
       } else {
@@ -210,6 +257,15 @@ export class AppSeedService {
           await this.empleadosService.asignarRoles(empleado.id, {
             rolesIds: [roleId],
           });
+        }
+        if (sucursalPrincipal) {
+          await this.asignarSucursalesSeed(
+            empleado.id,
+            seedEmpleado.email === 'martin@gmail.com'
+              ? sucursalesAdmin
+              : [sucursalPrincipal],
+            sucursalPrincipal.id,
+          );
         }
         empleadosRolAsignados += 1;
       }
@@ -228,6 +284,10 @@ export class AppSeedService {
         creados: rolesResult.creados.length,
         actualizados: rolesResult.actualizados.length,
         sinCambios: rolesResult.sinCambios.length,
+      },
+      sucursales: {
+        creadas: sucursalesResult.creadas,
+        existentes: sucursalesResult.existentes,
       },
       empleadosSeed: {
         creados: empleadosCreados,
@@ -250,6 +310,9 @@ export class AppSeedService {
       this.logger.log(`Roles actualizados: ${result.roles.actualizados}`);
       this.logger.log(`Roles sin cambios: ${result.roles.sinCambios}`);
       this.logger.log(
+        `Sucursales seed creadas: ${result.sucursales.creadas}, existentes: ${result.sucursales.existentes}`,
+      );
+      this.logger.log(
         `Empleados seed creados: ${result.empleadosSeed.creados}, existentes: ${result.empleadosSeed.existentes}, roles asignados: ${result.empleadosSeed.rolAsignados}`,
       );
     }
@@ -257,12 +320,29 @@ export class AppSeedService {
     return result;
   }
 
-  private async seedAdminUser(logResults: boolean) {
+  private async seedAdminUser(
+    logResults: boolean,
+    sucursalPrincipal?: Sucursal,
+    sucursalesAdmin: Sucursal[] = [],
+  ) {
     const adminEmail = process.env.ADMIN_EMAIL?.trim() || 'martin@gmail.com';
-    if (await this.empleadosService.findByEmail(adminEmail)) return;
 
     const adminRole = await this.rolesService.findByName('Admin');
     if (!adminRole) return;
+    const adminExistente = await this.empleadosService.findByEmail(adminEmail);
+    if (adminExistente) {
+      await this.empleadosService.asignarRoles(adminExistente.id, {
+        rolesIds: [adminRole.id],
+      });
+      if (sucursalPrincipal) {
+        await this.asignarSucursalesSeed(
+          adminExistente.id,
+          sucursalesAdmin,
+          sucursalPrincipal.id,
+        );
+      }
+      return;
+    }
 
     const adminDto: CrearEmpleadoDto = {
       nombreCompleto: process.env.ADMIN_NOMBRE || 'Martin Cardozo',
@@ -273,11 +353,139 @@ export class AppSeedService {
         process.env.ADMIN_DIRECCION || 'Av. Corrientes 1234, Buenos Aires',
       cargo: process.env.ADMIN_CARGO || 'Admin',
       rolesIds: [adminRole.id],
+      sucursalId: sucursalPrincipal?.id,
+      esSucursalPrincipal: true,
     };
 
-    await this.empleadosService.create(adminDto);
+    const adminCreado = await this.empleadosService.create(adminDto);
+    if (sucursalPrincipal) {
+      await this.asignarSucursalesSeed(
+        adminCreado.id,
+        sucursalesAdmin,
+        sucursalPrincipal.id,
+      );
+    }
     if (logResults) {
       this.logger.log(`Admin inicial creado: ${adminEmail}`);
+    }
+  }
+
+  private async seedSucursales(): Promise<{
+    sucursales: Sucursal[];
+    creadas: number;
+    existentes: number;
+  }> {
+    const empresaId = '11111111-1111-4111-8111-111111111111';
+    const sucursalesSeed = [
+      {
+        empresa_id: empresaId,
+        nombre: 'Shaddai',
+        nombreFantasia: 'Shaddai Casa Central',
+        direccion: 'Av. San Martin 1234',
+        localidad: 'Buenos Aires',
+        provincia: 'Buenos Aires',
+        codigoPostal: '1001',
+        telefono: '+54 11 4000-1001',
+        email: 'central@shaddai.com',
+        cuit: '20-12345678-3',
+        razonSocial: 'Shaddai S.A.',
+        condicionIva: CondicionIva.RESPONSABLE_INSCRIPTO,
+        puntoVentaArca: '0001',
+        ingresosBrutos: '901-123456-7',
+        inicioActividades: '2024-01-01',
+        mensajePieTicket: 'Gracias por su compra',
+        emailComprobantes: 'facturacion@shaddai.com',
+        tipoImpresora: TipoImpresora.TERMICA,
+        anchoTicket: AnchoTicket.MM_80,
+        activa: true,
+      },
+      {
+        empresa_id: empresaId,
+        nombre: 'Shaddai2',
+        nombreFantasia: 'Shaddai Sucursal 2',
+        direccion: 'Belgrano 2450',
+        localidad: 'Cordoba',
+        provincia: 'Cordoba',
+        codigoPostal: '5000',
+        telefono: '+54 351 400-2002',
+        email: 'sucursal2@shaddai.com',
+        cuit: '20-87654321-7',
+        razonSocial: 'Shaddai Sucursal 2 S.A.',
+        condicionIva: CondicionIva.MONOTRIBUTISTA,
+        puntoVentaArca: '0002',
+        ingresosBrutos: '904-765432-1',
+        inicioActividades: '2024-02-01',
+        mensajePieTicket: 'Gracias por elegir Shaddai2',
+        emailComprobantes: 'facturacion2@shaddai.com',
+        tipoImpresora: TipoImpresora.TERMICA,
+        anchoTicket: AnchoTicket.MM_80,
+        activa: true,
+      },
+    ];
+
+    const existentes = await this.sucursalService.findAll();
+    const sucursalesPorNombre = new Map(
+      existentes.map((sucursal) => [sucursal.nombre.toLowerCase(), sucursal]),
+    );
+    const sucursales: Sucursal[] = [];
+    let creadas = 0;
+    let existentesCount = 0;
+
+    for (const sucursalSeed of sucursalesSeed) {
+      const existente = sucursalesPorNombre.get(
+        sucursalSeed.nombre.toLowerCase(),
+      );
+      if (existente) {
+        sucursales.push(existente);
+        existentesCount += 1;
+        continue;
+      }
+
+      const creada = await this.sucursalService.create(sucursalSeed);
+      sucursales.push(creada);
+      creadas += 1;
+    }
+
+    return { sucursales, creadas, existentes: existentesCount };
+  }
+
+  private async asignarSucursalesSeed(
+    empleadoId: string,
+    sucursales: Sucursal[],
+    sucursalPrincipalId: string,
+  ): Promise<void> {
+    if (!sucursales.length) return;
+
+    await this.empleadoSucursalRepo.update(
+      { empleado: { id: empleadoId }, esSucursalPrincipal: true },
+      { esSucursalPrincipal: false },
+    );
+
+    const asignaciones = await this.empleadoSucursalRepo.find({
+      where: { empleado: { id: empleadoId } },
+      relations: ['sucursal'],
+    });
+
+    for (const sucursal of sucursales) {
+      const existente = asignaciones.find(
+        (asignacion) => asignacion.sucursal.id === sucursal.id,
+      );
+
+      if (existente) {
+        existente.activo = true;
+        existente.esSucursalPrincipal = sucursal.id === sucursalPrincipalId;
+        await this.empleadoSucursalRepo.save(existente);
+        continue;
+      }
+
+      await this.empleadoSucursalRepo.save(
+        this.empleadoSucursalRepo.create({
+          empleado: { id: empleadoId } as Empleado,
+          sucursal,
+          activo: true,
+          esSucursalPrincipal: sucursal.id === sucursalPrincipalId,
+        }),
+      );
     }
   }
 }
