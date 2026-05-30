@@ -1,6 +1,7 @@
 // ventas/ventas.service.ts
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,7 +17,6 @@ import { CobrarVentaDto, CrearVentaDto } from './dto/create-ventas-modulo.dto';
 import { EstadoVenta } from './enum/estado-venta.enum';
 import { TipoDocumento } from './enum/tipo-documento.enum';
 import { FlujoVenta } from './enum/flujo-venta.enum';
-
 
 @Injectable()
 export class VentasService {
@@ -35,8 +35,18 @@ export class VentasService {
 
   // ─── CREAR VENTA O COTIZACIÓN ───────────────────────────────────────────────
   async crear(dto: CrearVentaDto): Promise<VentasModulo> {
+    if (!dto.sucursal_id) {
+      throw new BadRequestException('La venta requiere una sucursal activa');
+    }
+    if (!dto.empleado_id) {
+      throw new BadRequestException('La venta requiere un empleado activo');
+    }
+
+    const sucursalId = dto.sucursal_id;
+    const empleadoId = dto.empleado_id;
+
     // 1. Obtener config de la sucursal
-    const config = await this.configPosService.findBySucursal(dto.sucursal_id);
+    const config = await this.configPosService.findBySucursal(sucursalId);
 
     // 2. Calcular items
     const items = dto.items.map((i) => {
@@ -70,8 +80,8 @@ export class VentasService {
       tipoDocumento: dto.tipoDocumento ?? TipoDocumento.VENTA,
       estado: EstadoVenta.ABIERTA,
       flujo: config.flujo,
-      sucursal_id: dto.sucursal_id,
-      empleado_id: dto.empleado_id,
+      sucursal_id: sucursalId,
+      empleado_id: empleadoId,
       cliente_id: dto.cliente_id ?? null,
       lista_precio_id: dto.lista_precio_id ?? config.listaPrecioDefaultId,
       subtotal,
@@ -88,7 +98,7 @@ export class VentasService {
       ventaGuardada,
       EstadoVenta.ABIERTA,
       EstadoVenta.ABIERTA,
-      dto.empleado_id,
+      empleadoId,
       'Venta creada',
     );
 
@@ -97,7 +107,7 @@ export class VentasService {
       return this.cambiarEstado(
         ventaGuardada,
         EstadoVenta.PENDIENTE_PAGO,
-        dto.empleado_id,
+        empleadoId,
         'Flujo simple',
       );
     }
@@ -106,8 +116,16 @@ export class VentasService {
   }
 
   // ─── COBRAR VENTA ──────────────────────────────────────────────────────────
-  async cobrar(ventaId: string, dto: CobrarVentaDto): Promise<VentasModulo> {
-    const venta = await this.findOne(ventaId);
+  async cobrar(
+    ventaId: string,
+    dto: CobrarVentaDto,
+    sucursalActivaId?: string,
+  ): Promise<VentasModulo> {
+    if (!dto.cajero_id) {
+      throw new BadRequestException('El cobro requiere un cajero activo');
+    }
+
+    const venta = await this.findOne(ventaId, sucursalActivaId);
 
     // Validar estado
     if (
@@ -163,7 +181,8 @@ export class VentasService {
     }
 
     // Cambiar estado
-    venta.cajero_id = dto.cajero_id;
+    const cajeroId = dto.cajero_id;
+    venta.cajero_id = cajeroId;
     const estadoSiguiente = config.requiereDespacho
       ? EstadoVenta.PENDIENTE_DESPACHO
       : EstadoVenta.PAGADA;
@@ -171,7 +190,7 @@ export class VentasService {
     return this.cambiarEstado(
       venta,
       estadoSiguiente,
-      dto.cajero_id,
+      cajeroId,
       'Venta cobrada',
     );
   }
@@ -180,8 +199,9 @@ export class VentasService {
   async convertirCotizacion(
     ventaId: string,
     empleadoId: string,
+    sucursalActivaId?: string,
   ): Promise<VentasModulo> {
-    const venta = await this.findOne(ventaId);
+    const venta = await this.findOne(ventaId, sucursalActivaId);
 
     if (venta.tipoDocumento !== TipoDocumento.COTIZACION) {
       throw new BadRequestException(`El documento no es una cotización`);
@@ -208,9 +228,10 @@ export class VentasService {
   async cancelar(
     ventaId: string,
     empleadoId: string,
+    sucursalActivaId?: string,
     motivo?: string,
   ): Promise<VentasModulo> {
-    const venta = await this.findOne(ventaId);
+    const venta = await this.findOne(ventaId, sucursalActivaId);
 
     if ([EstadoVenta.PAGADA, EstadoVenta.DESPACHADA].includes(venta.estado)) {
       throw new BadRequestException(
@@ -227,8 +248,12 @@ export class VentasService {
   }
 
   // ─── DESPACHAR ─────────────────────────────────────────────────────────────
-  async despachar(ventaId: string, empleadoId: string): Promise<VentasModulo> {
-    const venta = await this.findOne(ventaId);
+  async despachar(
+    ventaId: string,
+    empleadoId: string,
+    sucursalActivaId?: string,
+  ): Promise<VentasModulo> {
+    const venta = await this.findOne(ventaId, sucursalActivaId);
 
     if (venta.estado !== EstadoVenta.PENDIENTE_DESPACHO) {
       throw new BadRequestException(`La venta no está pendiente de despacho`);
@@ -243,16 +268,30 @@ export class VentasService {
   }
 
   // ─── BUSCAR ────────────────────────────────────────────────────────────────
-  async findOne(id: string): Promise<VentasModulo> {
+  async findOne(id: string, sucursalActivaId?: string): Promise<VentasModulo> {
     const venta = await this.ventaRepo.findOne({
       where: { id },
       relations: ['items', 'pagos', 'pagos.medioPago', 'historial'],
     });
     if (!venta) throw new NotFoundException(`Venta ${id} no encontrada`);
+    if (sucursalActivaId && venta.sucursal_id !== sucursalActivaId) {
+      throw new ForbiddenException(
+        'No podes consultar ventas de una sucursal distinta a la activa',
+      );
+    }
     return venta;
   }
 
-  async findBySucursal(sucursalId: string): Promise<VentasModulo[]> {
+  async findBySucursal(
+    sucursalId: string,
+    sucursalActivaId?: string,
+  ): Promise<VentasModulo[]> {
+    if (sucursalActivaId && sucursalId !== sucursalActivaId) {
+      throw new ForbiddenException(
+        'No podes consultar ventas de una sucursal distinta a la activa',
+      );
+    }
+
     return this.ventaRepo.find({
       where: { sucursal_id: sucursalId },
       order: { created_at: 'DESC' },

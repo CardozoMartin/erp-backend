@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
 import { ProductoPreciosModule } from 'src/producto_precios/producto_precios.module';
+import { Sucursal } from 'src/sucursal/entities/sucursal.entity';
+import { SucursalModule } from 'src/sucursal/sucursal.module';
 import { AtributoProducto } from '../atributo-producto/entities/atributo-producto.entity';
 import { AtributoVariante } from '../atributo-variante/entities/atributo-variante.entity';
 import { Imagen } from '../imagen/entities/imagen.entity';
@@ -11,6 +13,7 @@ import { Oferta } from '../oferta/entities/oferta.entity';
 import { ProductoCategoria } from '../producto-categoria/entities/producto-categoria.entity';
 import { Stock } from '../stock/entities/stock.entity';
 import { Variante } from '../variante/entities/variante.entity';
+import { ProductoSucursal } from './entities/producto-sucursal-entity';
 import { Producto } from './entities/producto.entity';
 import { ProductoController } from './producto.controller';
 import { ProductoService } from './producto.service';
@@ -18,6 +21,7 @@ import { ProductoService } from './producto.service';
 @Module({
   imports: [
     ProductoPreciosModule,
+    SucursalModule,
     TypeOrmModule.forFeature([
       Producto,
       Variante,
@@ -30,6 +34,8 @@ import { ProductoService } from './producto.service';
       ProductoCategoria,
       ProductoPrecio,
       MarcaProducto,
+      ProductoSucursal,
+      Sucursal,
     ]),
   ],
   controllers: [ProductoController],

@@ -17,6 +17,7 @@ import { Oferta } from '../../oferta/entities/oferta.entity';
 import { AtributoProducto } from '../../atributo-producto/entities/atributo-producto.entity';
 import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
 import { MarcaProducto } from 'src/marca_productos/entities/marca_producto.entity';
+import { ProductoSucursal } from './producto-sucursal-entity';
 
 export enum UnidadVenta {
   UNIDAD = 'UNIDAD',
@@ -51,6 +52,15 @@ export class Producto {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   precio_base!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  precio_costo!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  precio_venta!: number;
+
+  @Column({ type: 'decimal', precision: 7, scale: 2, default: 0 })
+  margen_ganancia!: number;
 
   @OneToMany(() => ProductoPrecio, (precio) => precio.producto)
   precios!: ProductoPrecio[];
@@ -102,6 +112,10 @@ export class Producto {
   })
   @JoinColumn({ name: 'marca_id' })
   marca!: MarcaProducto | null;
+
+  //relacion para asociar un producto a una sucursal específica (ejemplo: franquicias)
+  @OneToMany(() => ProductoSucursal, (ps) => ps.producto)
+  sucursales!: ProductoSucursal[];
 
   @Column({ type: 'varchar', length: 36, nullable: true })
   marca_id!: string | null;

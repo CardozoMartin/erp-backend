@@ -1,8 +1,9 @@
 // auth/auth.controller.ts
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Publico } from './decorators/publico.decorator';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsUUID, MinLength } from 'class-validator';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 export class LoginDto {
   @IsEmail()
@@ -13,6 +14,11 @@ export class LoginDto {
   password!: string;
 }
 
+export class SeleccionarSucursalDto {
+  @IsUUID()
+  sucursalId!: string;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -21,5 +27,10 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
+  }
+  @UseGuards(JwtAuthGuard)
+  @Post('seleccionar-sucursal')
+  seleccionarSucursal(@Request() req, @Body() dto: SeleccionarSucursalDto) {
+    return this.authService.seleccionarSucursal(req.user.id, dto.sucursalId);
   }
 }
