@@ -81,6 +81,26 @@ export class CreateClienteDto {
   @IsString()
   direccion?: string;
 
+  @IsOptional()
+  @IsString()
+  altura?: string;
+
+  @IsOptional()
+  @IsString()
+  barrio?: string;
+
+  @IsOptional()
+  @IsString()
+  localidad?: string;
+
+  @IsOptional()
+  @IsString()
+  codigo_postal?: string;
+
+  @IsOptional()
+  @IsString()
+  referencia_entrega?: string;
+
   // Si se envía, se crea la cuenta corriente automáticamente
   @IsOptional()
   @ValidateNested()

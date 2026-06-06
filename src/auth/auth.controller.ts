@@ -33,4 +33,10 @@ export class AuthController {
   seleccionarSucursal(@Request() req, @Body() dto: SeleccionarSucursalDto) {
     return this.authService.seleccionarSucursal(req.user.id, dto.sucursalId);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  logout(@Request() req) {
+    return this.authService.logout(req.user.id, req.user.sucursalId);
+  }
 }

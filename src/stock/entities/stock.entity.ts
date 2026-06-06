@@ -91,6 +91,26 @@ export class Stock {
   })
   cantidad_minima!: number;
 
+  // Ubicacion fisica dentro de la sucursal o deposito.
+  // Se guarda en stock porque un mismo producto puede estar ubicado distinto por sucursal/variante.
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  deposito!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  pasillo!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  estante!: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  sector!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  codigo_ubicacion!: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  ubicacion_referencia!: string | null;
+
   @CreateDateColumn()
   created_at!: Date;
 

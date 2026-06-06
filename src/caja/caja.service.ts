@@ -82,7 +82,8 @@ export class CajaService {
         empleado_id: empleadoId,
         sucursal_id: sucursalId,
         descripcion: `Apertura de caja con ${montoInicial}`,
-        despues: { monto_inicial: montoInicial },
+        despues: this.snapshotCaja(await this.findOne(caja.id, sucursalId)),
+        metadata: { monto_inicial: montoInicial },
       });
       return this.findOne(caja.id, sucursalId);
     } catch (error) {
@@ -132,17 +133,22 @@ export class CajaService {
     await this.auditoriaService.registrar({
       modulo: 'caja',
       accion: dto.tipo === TipoMovimientoCaja.EGRESO ? 'EGRESO_CAJA' : 'MOVIMIENTO_CAJA',
-      entidad: 'movimiento_caja',
-      entidad_id: guardado.id,
+      entidad: 'caja',
+      entidad_id: caja.id,
       empleado_id: empleadoId,
       sucursal_id: sucursalId,
       descripcion: dto.descripcion ?? dto.tipo,
       despues: {
         caja_id: caja.id,
+        movimiento_id: guardado.id,
         tipo: dto.tipo,
         monto: Number(dto.monto),
+        medio_pago_id: dto.medio_pago_id ?? null,
         categoria_egreso: dto.categoria_egreso ?? null,
+        entidad_nombre: dto.entidad_nombre ?? null,
+        referencia: dto.referencia ?? null,
       },
+      metadata: { movimiento_id: guardado.id },
     });
     return guardado;
   }
@@ -178,12 +184,21 @@ export class CajaService {
     await this.auditoriaService.registrar({
       modulo: 'caja',
       accion: 'COBRO_CAJA',
-      entidad: 'movimiento_caja',
-      entidad_id: guardado.id,
+      entidad: 'caja',
+      entidad_id: caja.id,
       empleado_id: params.empleadoId,
       sucursal_id: params.sucursalId,
       descripcion: params.descripcion ?? 'Cobro de comprobante',
+      despues: {
+        caja_id: params.cajaId,
+        movimiento_id: guardado.id,
+        comprobante_id: params.comprobanteId ?? null,
+        medio_pago_id: params.medioPagoId ?? null,
+        monto: Number(params.monto),
+        referencia: params.referencia ?? null,
+      },
       metadata: {
+        movimiento_id: guardado.id,
         caja_id: params.cajaId,
         comprobante_id: params.comprobanteId ?? null,
         medio_pago_id: params.medioPagoId ?? null,
@@ -223,12 +238,21 @@ export class CajaService {
     await this.auditoriaService.registrar({
       modulo: 'caja',
       accion: 'REEMBOLSO_CAJA',
-      entidad: 'movimiento_caja',
-      entidad_id: guardado.id,
+      entidad: 'caja',
+      entidad_id: caja.id,
       empleado_id: params.empleadoId,
       sucursal_id: params.sucursalId,
       descripcion: params.descripcion ?? 'Egreso por nota de credito',
+      despues: {
+        caja_id: params.cajaId,
+        movimiento_id: guardado.id,
+        comprobante_id: params.comprobanteId ?? null,
+        medio_pago_id: params.medioPagoId ?? null,
+        monto: Number(params.monto),
+        referencia: params.referencia ?? null,
+      },
       metadata: {
+        movimiento_id: guardado.id,
         caja_id: params.cajaId,
         comprobante_id: params.comprobanteId ?? null,
         monto: Number(params.monto),
@@ -248,6 +272,7 @@ export class CajaService {
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('La caja ya esta cerrada');
     }
+    const antes = this.snapshotCaja(caja);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -286,10 +311,19 @@ export class CajaService {
         empleado_id: empleadoId,
         sucursal_id: sucursalId,
         descripcion: `Cierre de caja. Declarado ${montoDeclarado}, calculado ${montoCalculado}`,
+        antes,
         despues: {
+          ...this.snapshotCaja(caja),
           monto_final_declarado: montoDeclarado,
           monto_final_calculado: montoCalculado,
           diferencia: caja.diferencia,
+        },
+        metadata: {
+          monto_final_declarado: montoDeclarado,
+          monto_final_calculado: montoCalculado,
+          diferencia: caja.diferencia,
+          tiene_diferencia: Number(caja.diferencia ?? 0) !== 0,
+          descripcion: dto.descripcion ?? null,
         },
       });
       return this.findOne(caja.id, sucursalId);
@@ -426,5 +460,35 @@ export class CajaService {
     });
     if (!caja) throw new NotFoundException('Caja no encontrada');
     return caja;
+  }
+
+  private snapshotCaja(caja: Caja) {
+    return {
+      id: caja.id,
+      estado: caja.estado,
+      sucursal_id: caja.sucursal_id,
+      empleado_id: caja.empleado_id,
+      monto_inicial: Number(caja.monto_inicial ?? 0),
+      monto_final_declarado:
+        caja.monto_final_declarado == null ? null : Number(caja.monto_final_declarado),
+      monto_final_calculado:
+        caja.monto_final_calculado == null ? null : Number(caja.monto_final_calculado),
+      diferencia: caja.diferencia == null ? null : Number(caja.diferencia),
+      fecha_apertura: caja.fecha_apertura,
+      fecha_cierre: caja.fecha_cierre,
+      movimientos: (caja.movimientos ?? []).map((movimiento) => ({
+        id: movimiento.id,
+        tipo: movimiento.tipo,
+        monto: Number(movimiento.monto ?? 0),
+        empleado_id: movimiento.empleado_id,
+        comprobante_id: movimiento.comprobante_id,
+        medio_pago_id: movimiento.medio_pago_id,
+        categoria_egreso: movimiento.categoria_egreso,
+        entidad_nombre: movimiento.entidad_nombre,
+        referencia: movimiento.referencia,
+        descripcion: movimiento.descripcion,
+        fecha: movimiento.fecha,
+      })),
+    };
   }
 }

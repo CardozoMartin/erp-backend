@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Request } from '@nestjs/common';
 import { PermisosService } from './permisos.service';
 import { CrearPermisoDto } from './dto/create-permiso.dto';
 import { UpdatePermisoDto } from './dto/update-permiso.dto';
@@ -8,8 +8,8 @@ export class PermisosController {
   constructor(private readonly permisosService: PermisosService) {}
 
   @Post()
-  create(@Body() createPermisoDto: CrearPermisoDto) {
-    return this.permisosService.create(createPermisoDto);
+  create(@Body() createPermisoDto: CrearPermisoDto, @Request() req) {
+    return this.permisosService.create(createPermisoDto, req.user?.id);
   }
 
   @Get()
@@ -23,12 +23,12 @@ export class PermisosController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updatePermisoDto: UpdatePermisoDto) {
-    return this.permisosService.update(id, updatePermisoDto);
+  update(@Param('id') id: string, @Body() updatePermisoDto: UpdatePermisoDto, @Request() req) {
+    return this.permisosService.update(id, updatePermisoDto, req.user?.id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.permisosService.remove(id);
+  remove(@Param('id') id: string, @Request() req) {
+    return this.permisosService.remove(id, req.user?.id);
   }
 }

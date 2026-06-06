@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { ListaPrecioService } from 'src/lista-precio/lista-precio.service';
+import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
 import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { Stock } from 'src/stock/entities/stock.entity';
@@ -39,7 +42,9 @@ export class ComprobantesService {
     @InjectRepository(ProductoSucursal)
     private readonly productoSucursalRepo: Repository<ProductoSucursal>,
     private readonly configuracionService: ConfiguracionService,
+    private readonly listaPrecioService: ListaPrecioService,
     private readonly dataSource: DataSource,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
 
   async create(
@@ -69,6 +74,7 @@ export class ComprobantesService {
         dto.tipo,
         dto.items,
         dto.omitir_validacion_stock ?? false,
+        dto.lista_precio_id,
       );
 
       // 3. Calculamos totales generales del comprobante.
@@ -132,7 +138,27 @@ export class ComprobantesService {
       await queryRunner.manager.save(items);
 
       await queryRunner.commitTransaction();
-      return this.findOne(comprobante.id, sucursalId);
+      const creado = await this.findOne(comprobante.id, sucursalId);
+      await this.auditoriaService.registrar({
+        modulo: 'comprobantes',
+        accion: 'CREAR_COMPROBANTE',
+        entidad: 'comprobante',
+        entidad_id: creado.id,
+        empleado_id: empleadoId,
+        sucursal_id: sucursalId,
+        descripcion: `${creado.tipo} creado ${creado.numero}`,
+        despues: this.snapshotComprobante(creado),
+        metadata: {
+          tipo: creado.tipo,
+          estado: creado.estado,
+          numero: creado.numero,
+          total: Number(creado.total ?? 0),
+          cantidad_items: creado.items?.length ?? 0,
+          cliente_id: creado.cliente_id,
+          vendedor_id: creado.empleado_vendedor_id,
+        },
+      });
+      return creado;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -162,11 +188,17 @@ export class ComprobantesService {
     id: string,
     sucursalId: string,
     dto: UpdateComprobanteDto,
+    empleadoId?: string | null,
   ): Promise<Comprobante> {
     const comprobante = await this.findOne(id, sucursalId);
-    if (comprobante.estado !== EstadoComprobante.BORRADOR) {
+    const antes = this.snapshotComprobante(comprobante);
+    if (
+      ![EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(
+        comprobante.estado,
+      )
+    ) {
       throw new BadRequestException(
-        'Solo se pueden modificar comprobantes en borrador',
+        'Solo se pueden modificar comprobantes en borrador o pendientes de cobro',
       );
     }
 
@@ -190,6 +222,7 @@ export class ComprobantesService {
         comprobante.tipo,
         dto.items,
         dto.omitir_validacion_stock ?? false,
+        dto.lista_precio_id ?? comprobante.lista_precio_id,
       );
       comprobante.subtotal = this.round(
         itemsCalculados.reduce((sum, item) => sum + Number(item.subtotal), 0),
@@ -226,19 +259,58 @@ export class ComprobantesService {
     }
 
     await this.comprobanteRepo.save(comprobante);
-    return this.findOne(id, sucursalId);
+    const actualizado = await this.findOne(id, sucursalId);
+    const despues = this.snapshotComprobante(actualizado);
+    await this.auditoriaService.registrar({
+      modulo: 'comprobantes',
+      accion: 'ACTUALIZAR_COMPROBANTE',
+      entidad: 'comprobante',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Comprobante actualizado ${actualizado.numero}`,
+      antes,
+      despues,
+      metadata: {
+        campos_recibidos: Object.keys(dto),
+        items: this.diffItems(antes.items, despues.items),
+        total_anterior: antes.total,
+        total_nuevo: despues.total,
+      },
+    });
+    return actualizado;
   }
 
   async cambiarEstado(
     id: string,
     sucursalId: string,
     dto: CambiarEstadoComprobanteDto,
+    empleadoId?: string | null,
   ): Promise<Comprobante> {
     // 1. Por ahora solo cambiamos estado. Cuando creemos flujos, validamos transiciones aca.
     const comprobante = await this.findOne(id, sucursalId);
+    const antes = this.snapshotComprobante(comprobante);
     comprobante.estado = dto.estado;
     comprobante.observaciones = dto.observaciones ?? comprobante.observaciones;
-    return this.comprobanteRepo.save(comprobante);
+    await this.comprobanteRepo.save(comprobante);
+    const actualizado = await this.findOne(id, sucursalId);
+    await this.auditoriaService.registrar({
+      modulo: 'comprobantes',
+      accion: 'CAMBIAR_ESTADO_COMPROBANTE',
+      entidad: 'comprobante',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Estado de ${actualizado.numero} cambiado de ${antes.estado} a ${actualizado.estado}`,
+      antes,
+      despues: this.snapshotComprobante(actualizado),
+      metadata: {
+        estado_anterior: antes.estado,
+        estado_nuevo: actualizado.estado,
+        observaciones: dto.observaciones ?? null,
+      },
+    });
+    return actualizado;
   }
 
   async verNumeradores(sucursalId: string): Promise<NumeradorComprobante[]> {
@@ -348,8 +420,13 @@ export class ComprobantesService {
     tipo: TipoComprobante,
     items: CreateComprobanteItemDto[],
     omitirValidacionStock = false,
+    listaPrecioId?: string | null,
   ): Promise<Partial<ComprobanteItem>[]> {
     const itemsCalculados: Partial<ComprobanteItem>[] = [];
+    const listaPrecio = await this.obtenerListaPrecioActiva(
+      sucursalId,
+      listaPrecioId,
+    );
 
     for (const item of items) {
       // 1. Si el item no viene de un producto real, lo dejamos pasar como concepto manual.
@@ -405,15 +482,46 @@ export class ComprobantesService {
       }
 
       // 5. Si el frontend no mando descripcion, usamos el nombre actual del producto.
+      const precioUnitario =
+        listaPrecio && !item.comprobante_item_origen_id && tipo !== TipoComprobante.NOTA_CREDITO
+          ? this.listaPrecioService.calcularPrecio(
+              this.precioBaseProducto(producto),
+              listaPrecio,
+            )
+          : Number(item.precio_unitario);
+
       itemsCalculados.push(
         this.calcularItem({
           ...item,
+          precio_unitario: precioUnitario,
           descripcion: item.descripcion || producto.nombre,
         }),
       );
     }
 
     return itemsCalculados;
+  }
+
+  private async obtenerListaPrecioActiva(
+    sucursalId: string,
+    listaPrecioId?: string | null,
+  ): Promise<ListaPrecio | undefined> {
+    if (!listaPrecioId) return undefined;
+    const listas = await this.listaPrecioService.findAll(sucursalId);
+    const lista = listas.find((item) => item.id === listaPrecioId);
+    if (!lista) {
+      throw new BadRequestException(
+        'La lista de precio no existe, esta inactiva o no corresponde a la sucursal',
+      );
+    }
+    return lista;
+  }
+
+  private precioBaseProducto(producto: Producto): number {
+    const precioVenta = Number(producto.precio_venta ?? 0);
+    if (Number.isFinite(precioVenta) && precioVenta > 0) return precioVenta;
+    const precioBase = Number(producto.precio_base ?? 0);
+    return Number.isFinite(precioBase) ? precioBase : 0;
   }
 
   private requiereStockDisponible(tipo: TipoComprobante): boolean {
@@ -470,5 +578,72 @@ export class ComprobantesService {
 
   private round(value: number): number {
     return Number(Number(value).toFixed(2));
+  }
+
+  private snapshotComprobante(comprobante: Comprobante) {
+    return {
+      id: comprobante.id,
+      tipo: comprobante.tipo,
+      estado: comprobante.estado,
+      numero: comprobante.numero,
+      numero_secuencial: comprobante.numero_secuencial,
+      punto_venta: comprobante.punto_venta,
+      codigo_fiscal: comprobante.codigo_fiscal,
+      cae: comprobante.cae,
+      cae_vencimiento: comprobante.cae_vencimiento,
+      sucursal_id: comprobante.sucursal_id,
+      caja_id: comprobante.caja_id,
+      cliente_id: comprobante.cliente_id,
+      empleado_vendedor_id: comprobante.empleado_vendedor_id,
+      empleado_cajero_id: comprobante.empleado_cajero_id,
+      empleado_despachador_id: comprobante.empleado_despachador_id,
+      comprobante_origen_id: comprobante.comprobante_origen_id,
+      lista_precio_id: comprobante.lista_precio_id,
+      subtotal: Number(comprobante.subtotal ?? 0),
+      descuento_global_porcentaje: Number(comprobante.descuento_global_porcentaje ?? 0),
+      descuento_global_monto: Number(comprobante.descuento_global_monto ?? 0),
+      descuento_total: Number(comprobante.descuento_total ?? 0),
+      recargo_total: Number(comprobante.recargo_total ?? 0),
+      total: Number(comprobante.total ?? 0),
+      observaciones: comprobante.observaciones,
+      fecha_vencimiento: comprobante.fecha_vencimiento,
+      items: (comprobante.items ?? []).map((item) => ({
+        id: item.id,
+        producto_id: item.producto_id,
+        variante_id: item.variante_id,
+        comprobante_item_origen_id: item.comprobante_item_origen_id,
+        descripcion: item.descripcion,
+        cantidad: Number(item.cantidad ?? 0),
+        precio_unitario: Number(item.precio_unitario ?? 0),
+        descuento_porcentaje: Number(item.descuento_porcentaje ?? 0),
+        descuento_monto: Number(item.descuento_monto ?? 0),
+        recargo_monto: Number(item.recargo_monto ?? 0),
+        subtotal: Number(item.subtotal ?? 0),
+      })),
+    };
+  }
+
+  private diffItems(antes: any[] = [], despues: any[] = []) {
+    const key = (item: any) => `${item.producto_id ?? item.descripcion}:${item.variante_id ?? ''}`;
+    const anteriores = new Map(antes.map((item) => [key(item), item]));
+    const actuales = new Map(despues.map((item) => [key(item), item]));
+    const agregados = despues.filter((item) => !anteriores.has(key(item)));
+    const eliminados = antes.filter((item) => !actuales.has(key(item)));
+    const modificados = despues
+      .filter((item) => {
+        const anterior = anteriores.get(key(item));
+        return (
+          anterior &&
+          (Number(anterior.cantidad) !== Number(item.cantidad) ||
+            Number(anterior.precio_unitario) !== Number(item.precio_unitario) ||
+            Number(anterior.subtotal) !== Number(item.subtotal))
+        );
+      })
+      .map((item) => ({
+        antes: anteriores.get(key(item)),
+        despues: item,
+      }));
+
+    return { agregados, eliminados, modificados };
   }
 }

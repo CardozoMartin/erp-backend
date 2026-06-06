@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { SucursalService } from 'src/sucursal/sucursal.service';
 import { Repository } from 'typeorm';
 import { EmpleadoSucursal } from './entities/empleado-sucursal.entity';
@@ -15,6 +16,7 @@ export class EmpleadoSucursalesService {
     @InjectRepository(EmpleadoSucursal)
     private readonly empleadoSucursalRepo: Repository<EmpleadoSucursal>,
     private readonly sucursalService: SucursalService,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
 
   //servicio para asignar una sucursal al empleado
@@ -22,6 +24,8 @@ export class EmpleadoSucursalesService {
     empleadoId: string,
     sucursalId: string,
     esPrincipal: boolean = false,
+    empleadoActorId?: string | null,
+    sucursalActivaId?: string | null,
   ): Promise<EmpleadoSucursal> {
     const empleado = await this.empleadoSucursalRepo.manager.findOne(Empleado, {
       where: { id: empleadoId },
@@ -59,7 +63,18 @@ export class EmpleadoSucursalesService {
       activo: true,
     });
 
-    return this.empleadoSucursalRepo.save(asignacion);
+    const guardada = await this.empleadoSucursalRepo.save(asignacion);
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'ASIGNAR_SUCURSAL_EMPLEADO',
+      entidad: 'empleado',
+      entidad_id: empleadoId,
+      empleado_id: empleadoActorId ?? null,
+      sucursal_id: sucursalActivaId ?? sucursalId,
+      descripcion: `Sucursal asignada: ${sucursal.nombre}`,
+      despues: { sucursal_id: sucursalId, sucursal: sucursal.nombre, esPrincipal },
+    });
+    return guardada;
   }
   // Obtener todas las sucursales de un empleado
   async findByEmpleado(empleadoId: string): Promise<EmpleadoSucursal[]> {
@@ -70,7 +85,12 @@ export class EmpleadoSucursalesService {
   }
 
   // Desactivar asignación (no borrar)
-  async desasignar(empleadoId: string, sucursalId: string): Promise<void> {
+  async desasignar(
+    empleadoId: string,
+    sucursalId: string,
+    empleadoActorId?: string | null,
+    sucursalActivaId?: string | null,
+  ): Promise<void> {
     const asignacion = await this.empleadoSucursalRepo.findOne({
       where: {
         empleado: { id: empleadoId },
@@ -84,11 +104,24 @@ export class EmpleadoSucursalesService {
     }
     asignacion.activo = false;
     await this.empleadoSucursalRepo.save(asignacion);
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'QUITAR_SUCURSAL_EMPLEADO',
+      entidad: 'empleado',
+      entidad_id: empleadoId,
+      empleado_id: empleadoActorId ?? null,
+      sucursal_id: sucursalActivaId ?? sucursalId,
+      descripcion: 'Acceso a sucursal quitado',
+      antes: { sucursal_id: sucursalId, activo: true },
+      despues: { sucursal_id: sucursalId, activo: false },
+    });
   }
   // Cambiar sucursal principal
   async setPrincipal(
     empleadoId: string,
     sucursalId: string,
+    empleadoActorId?: string | null,
+    sucursalActivaId?: string | null,
   ): Promise<EmpleadoSucursal> {
     // Quitar principal anterior
     await this.empleadoSucursalRepo.update(
@@ -111,6 +144,17 @@ export class EmpleadoSucursalesService {
     }
 
     asignacion.esSucursalPrincipal = true;
-    return this.empleadoSucursalRepo.save(asignacion);
+    const guardada = await this.empleadoSucursalRepo.save(asignacion);
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'CAMBIAR_SUCURSAL_PRINCIPAL_EMPLEADO',
+      entidad: 'empleado',
+      entidad_id: empleadoId,
+      empleado_id: empleadoActorId ?? null,
+      sucursal_id: sucursalActivaId ?? sucursalId,
+      descripcion: `Sucursal principal: ${asignacion.sucursal?.nombre ?? sucursalId}`,
+      despues: { sucursal_id: sucursalId, esPrincipal: true },
+    });
+    return guardada;
   }
 }

@@ -53,6 +53,21 @@ export class Cliente {
   @Column({ type: 'varchar', length: 300, nullable: true })
   direccion!: string | null;
 
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  altura!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  barrio!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  localidad!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  codigo_postal!: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  referencia_entrega!: string | null;
+
   @Column({ default: true })
   activo!: boolean;
 

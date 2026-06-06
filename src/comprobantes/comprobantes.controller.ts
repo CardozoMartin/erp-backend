@@ -52,17 +52,19 @@ export class ComprobantesController {
   update(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
+    @Request() req,
     @Body() dto: UpdateComprobanteDto,
   ) {
-    return this.comprobantesService.update(id, sucursalId, dto);
+    return this.comprobantesService.update(id, sucursalId, dto, req.user?.id);
   }
 
   @Patch(':id/estado')
   cambiarEstado(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
+    @Request() req,
     @Body() dto: CambiarEstadoComprobanteDto,
   ) {
-    return this.comprobantesService.cambiarEstado(id, sucursalId, dto);
+    return this.comprobantesService.cambiarEstado(id, sucursalId, dto, req.user?.id);
   }
 }

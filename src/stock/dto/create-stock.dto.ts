@@ -1,5 +1,15 @@
-import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
+
+const emptyToNull = ({ value }: { value: unknown }) =>
+  typeof value === 'string' && value.trim() === '' ? null : value;
 
 export class CreateStockDto {
   @IsOptional()
@@ -23,6 +33,42 @@ export class CreateStockDto {
   @IsNumber()
   @Min(0)
   cantidad_minima?: number;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  deposito?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  pasillo?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  estante?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  sector?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  codigo_ubicacion?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(255)
+  ubicacion_referencia?: string | null;
 }
 
 // DTO para actualizar stock (permite id, created_at, updated_at sin rechazo)
@@ -52,6 +98,42 @@ export class UpdateStockDto {
   @IsNumber()
   @Min(0)
   cantidad_minima?: number;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  deposito?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  pasillo?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  estante?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(120)
+  sector?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(80)
+  codigo_ubicacion?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  @MaxLength(255)
+  ubicacion_referencia?: string | null;
 
   @IsOptional()
   created_at?: Date;

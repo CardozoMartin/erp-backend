@@ -33,6 +33,15 @@ export class Empleado {
   @Column({ type: 'boolean', default: true })
   activo!: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  bono_ventas_activo!: boolean;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  meta_mensual_ventas!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  bono_mensual_ventas!: number;
+
   @OneToMany(() => EmpleadoRol, (er) => er.empleado, { eager: true })
   empleadoRoles!: EmpleadoRol[];
 

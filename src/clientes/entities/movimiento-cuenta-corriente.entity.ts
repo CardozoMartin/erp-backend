@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { CuentaCorriente } from './cuenta-corriente.entity';
+import { Comprobante } from '../../comprobantes/entities/comprobante.entity';
 
 export enum TipoMovimientoCC {
   CARGO = 'CARGO', // nueva deuda (venta)
@@ -41,8 +42,21 @@ export class MovimientoCuentaCorriente {
   descripcion!: string | null;
 
   // El comprobante que originó este movimiento
+  @ManyToOne(() => Comprobante, { nullable: true })
+  @JoinColumn({ name: 'comprobante_id' })
+  comprobante!: Comprobante | null;
+
   @Column({ type: 'varchar', length: 36, nullable: true })
   comprobante_id!: string | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  movimiento_origen_id!: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fecha_vencimiento!: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  recargo_generado_hasta!: Date | null;
 
   // Si el recargo fue perdonado manualmente
   @Column({ default: false })

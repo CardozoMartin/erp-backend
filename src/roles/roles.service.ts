@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PermisosService } from 'src/permisos/permisos.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { In, Repository } from 'typeorm';
 import { CrearRoleDto } from './dto/create-role.dto';
 import { RoleSeed } from './roles-seed';
@@ -13,8 +14,9 @@ export class RolesService {
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
     private readonly permisosService: PermisosService,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
-  async create(createRoleDto: CrearRoleDto): Promise<Role> {
+  async create(createRoleDto: CrearRoleDto, empleadoActorId?: string | null): Promise<Role> {
     //1.- primero verificamos que el rol no exista
     const existeRole = await this.roleRepository.findOne({
       where: { nombre: createRoleDto.nombre },
@@ -36,7 +38,18 @@ export class RolesService {
       rutaInicio: createRoleDto.rutaInicio,
       permisos,
     });
-    return await this.roleRepository.save(rol);
+    const saved = await this.roleRepository.save(rol);
+    await this.auditoriaService.registrar({
+      modulo: 'seguridad',
+      accion: 'CREAR_ROL',
+      entidad: 'rol',
+      entidad_id: saved.id,
+      empleado_id: empleadoActorId ?? null,
+      descripcion: `Rol creado: ${saved.nombre}`,
+      despues: this.snapshotRole(saved) as any,
+      metadata: { permisos_ids: createRoleDto.permisosIds ?? [] },
+    });
+    return saved;
   }
   //servicio para buscar un rol por su id
   async findByIds(ids: string[]): Promise<Role[]> {
@@ -80,8 +93,9 @@ export class RolesService {
   }
 
   //servicio para actualizar un rol por su id
-  async update(id: string, dto: UpdateRoleDto): Promise<Role> {
+  async update(id: string, dto: UpdateRoleDto, empleadoActorId?: string | null): Promise<Role> {
     const rol = await this.findOne(id);
+    const antes = this.snapshotRole(rol);
 
     if (dto.nombre && dto.nombre !== rol.nombre) {
       const existe = await this.roleRepository.findOne({
@@ -108,17 +122,51 @@ export class RolesService {
     if (dto.descripcion !== undefined) rol.descripcion = dto.descripcion;
     if (dto.rutaInicio) rol.rutaInicio = dto.rutaInicio;
 
-    return this.roleRepository.save(rol);
+    const saved = await this.roleRepository.save(rol);
+    await this.auditoriaService.registrar({
+      modulo: 'seguridad',
+      accion: 'ACTUALIZAR_ROL',
+      entidad: 'rol',
+      entidad_id: id,
+      empleado_id: empleadoActorId ?? null,
+      descripcion: `Rol actualizado: ${saved.nombre}`,
+      antes: antes as any,
+      despues: this.snapshotRole(saved) as any,
+      metadata: { campos_recibidos: Object.keys(dto) },
+    });
+    return saved;
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, empleadoActorId?: string | null): Promise<void> {
     const rol = await this.findOne(id);
+    const antes = this.snapshotRole(rol);
     await this.roleRepository.remove(rol);
+    await this.auditoriaService.registrar({
+      modulo: 'seguridad',
+      accion: 'ELIMINAR_ROL',
+      entidad: 'rol',
+      entidad_id: id,
+      empleado_id: empleadoActorId ?? null,
+      descripcion: `Rol eliminado: ${antes.nombre}`,
+      antes: antes as any,
+    });
   }
-  async toggleActivo(id: string): Promise<Role> {
+  async toggleActivo(id: string, empleadoActorId?: string | null): Promise<Role> {
     const rol = await this.findOne(id);
+    const antes = this.snapshotRole(rol);
     rol.activo = !rol.activo;
-    return this.roleRepository.save(rol);
+    const saved = await this.roleRepository.save(rol);
+    await this.auditoriaService.registrar({
+      modulo: 'seguridad',
+      accion: 'CAMBIAR_ESTADO_ROL',
+      entidad: 'rol',
+      entidad_id: id,
+      empleado_id: empleadoActorId ?? null,
+      descripcion: `${saved.activo ? 'Rol activado' : 'Rol desactivado'}: ${saved.nombre}`,
+      antes: antes as any,
+      despues: this.snapshotRole(saved) as any,
+    });
+    return saved;
   }
 
   async syncSeedRoles(seedRoles: RoleSeed[]): Promise<{
@@ -201,5 +249,22 @@ export class RolesService {
     }
 
     return { creados, actualizados, sinCambios };
+  }
+
+  private snapshotRole(rol: Role) {
+    return {
+      id: rol.id,
+      nombre: rol.nombre,
+      descripcion: rol.descripcion,
+      rutaInicio: rol.rutaInicio,
+      activo: rol.activo,
+      permisos: (rol.permisos ?? []).map((permiso) => ({
+        id: permiso.id,
+        clave: permiso.clave,
+        nombre: permiso.nombre,
+        modulo: permiso.modulo,
+        estado: permiso.estado,
+      })),
+    };
   }
 }
