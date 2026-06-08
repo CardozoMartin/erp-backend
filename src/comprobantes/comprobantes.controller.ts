@@ -14,8 +14,10 @@ import {
   CambiarEstadoComprobanteDto,
   CreateComprobanteDto,
 } from './dto/create-comprobante.dto';
+import { EnviarComprobanteEmailDto } from './dto/enviar-comprobante-email.dto';
 import { UpdateComprobanteDto } from './dto/update-comprobante.dto';
 import { TipoComprobante } from './entities/comprobante.entity';
+import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 
 @Controller('comprobantes')
 export class ComprobantesController {
@@ -66,5 +68,16 @@ export class ComprobantesController {
     @Body() dto: CambiarEstadoComprobanteDto,
   ) {
     return this.comprobantesService.cambiarEstado(id, sucursalId, dto, req.user?.id);
+  }
+
+  @Post(':id/enviar-email')
+  @RequierePermiso('ventas.ver')
+  enviarEmail(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: EnviarComprobanteEmailDto,
+  ) {
+    return this.comprobantesService.enviarPorEmail(id, sucursalId, dto, req.user?.id);
   }
 }

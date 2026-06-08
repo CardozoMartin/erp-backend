@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 
@@ -37,6 +38,17 @@ export class RegistrarPagoCuentaDto {
   @IsOptional()
   @IsString()
   comprobante_id?: string;
+
+  @IsUUID()
+  caja_id!: string;
+
+  @IsOptional()
+  @IsUUID()
+  medio_pago_id?: string | null;
+
+  @IsOptional()
+  @IsString()
+  referencia?: string | null;
 }
 
 export class RegistrarNotaCreditoCuentaDto {

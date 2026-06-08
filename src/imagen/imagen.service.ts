@@ -31,7 +31,10 @@ export class ImagenService {
     RolImagen.PRINCIPAL_WEB,
   ]);
 
-  private async clearPreviousPrincipalRole(dto: CreateImagenDto | UpdateImagenDto) {
+  private async clearPreviousPrincipalRole(
+    dto: CreateImagenDto | UpdateImagenDto,
+    sucursalId?: string,
+  ) {
     if (!dto.rol || (!this.principalRoles.has(dto.rol) && !(dto as any).reemplazar_rol)) return;
     if (!dto.producto_id) return;
 
@@ -46,7 +49,7 @@ export class ImagenService {
 
       for (const imagen of anteriores) {
         if (imagen.storage_key) {
-          await this.cloudinaryService.delete(imagen.storage_key);
+          await this.cloudinaryService.delete(imagen.storage_key, sucursalId);
         }
       }
       if (anteriores.length > 0) {
@@ -65,7 +68,7 @@ export class ImagenService {
     );
   }
 
-  private async replaceSpecificImage(dto: CreateImagenDto) {
+  private async replaceSpecificImage(dto: CreateImagenDto, sucursalId?: string) {
     if (!dto.reemplazar_imagen_id) return;
 
     const imagen = await this.imagenRepo.findOne({
@@ -85,7 +88,7 @@ export class ImagenService {
     }
 
     if (imagen.storage_key) {
-      await this.cloudinaryService.delete(imagen.storage_key);
+      await this.cloudinaryService.delete(imagen.storage_key, sucursalId);
     }
     await this.imagenRepo.remove(imagen);
   }
@@ -93,6 +96,7 @@ export class ImagenService {
   async create(
     dto: CreateImagenDto,
     file: Express.Multer.File,
+    sucursalId?: string,
   ): Promise<Imagen> {
     console.log('[ImagenDebug] ImagenService.create dto:', dto);
     //!validamos que el producto exissta
@@ -126,6 +130,7 @@ export class ImagenService {
       await this.cloudinaryService.upload(
         file,
         `productos/${dto.producto_id}/${dto.variante_id ?? 'sin-variante'}`,
+        sucursalId,
       );
     console.log('[ImagenDebug] Cloudinary upload OK:', {
       url,
@@ -134,8 +139,8 @@ export class ImagenService {
       alto_px,
     });
 
-    await this.replaceSpecificImage(dto);
-    await this.clearPreviousPrincipalRole(dto);
+    await this.replaceSpecificImage(dto, sucursalId);
+    await this.clearPreviousPrincipalRole(dto, sucursalId);
 
     // 4. Guardar solo la URL y metadatos en la DB
     const imagen = this.imagenRepo.create({
@@ -194,12 +199,12 @@ export class ImagenService {
   }
 
   // ─── Eliminar imagen de Cloudinary Y de la DB ─────────────────────────────
-  async remove(id: string): Promise<{ message: string }> {
+  async remove(id: string, sucursalId?: string): Promise<{ message: string }> {
     const imagen = await this.findOneOrFail(id);
 
     // Eliminar de Cloudinary si tiene storage_key
     if (imagen.storage_key) {
-      await this.cloudinaryService.delete(imagen.storage_key);
+      await this.cloudinaryService.delete(imagen.storage_key, sucursalId);
     }
 
     await this.imagenRepo.remove(imagen);

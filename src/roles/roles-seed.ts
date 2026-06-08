@@ -118,6 +118,7 @@ export const rolesSeed: RoleSeed[] = [
       'empleados.roles',
       'reportes.ver',
       'config.pos',
+      'config.email',
     ],
   },
 ];

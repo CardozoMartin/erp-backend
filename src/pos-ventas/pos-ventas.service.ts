@@ -25,6 +25,7 @@ import {
   CrearVentaPosDto,
   DevolverVentaPosDto,
   EmitirDesdeVentaDto,
+  VentaCuentaCorrientePosDto,
   VentaCompletaPosDto,
 } from './dto/pos-venta.dto';
 
@@ -149,6 +150,61 @@ export class PosVentasService {
     return comprobanteFiscal
       ? { venta: cobrada, comprobanteFiscal }
       : { venta: cobrada };
+  }
+
+  async ventaCuentaCorriente(
+    sucursalId: string,
+    empleadoId: string,
+    dto: VentaCuentaCorrientePosDto,
+  ): Promise<{ venta: Comprobante }> {
+    const config = await this.configuracionService.crearPorDefecto(sucursalId);
+    this.validarModoPermiteVentaPendiente(config.modo_pos);
+    if (!config.permitir_cuenta_corriente) {
+      throw new BadRequestException(
+        'La cuenta corriente no esta habilitada para esta sucursal',
+      );
+    }
+    if (!dto.cliente_id) {
+      throw new BadRequestException(
+        'Seleccione un cliente para cargar la venta a cuenta corriente',
+      );
+    }
+
+    const venta = await this.comprobantesService.create(sucursalId, empleadoId, {
+      ...dto,
+      tipo: TipoComprobante.VENTA,
+      estado: EstadoComprobante.PENDIENTE_COBRO,
+      empleado_vendedor_id: dto.empleado_vendedor_id ?? empleadoId,
+    });
+    await this.auditoriaService.registrar({
+      modulo: 'pos',
+      accion: 'CREAR_VENTA_CUENTA_CORRIENTE',
+      entidad: 'comprobante',
+      entidad_id: venta.id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion: `Venta a cuenta corriente creada ${venta.numero}`,
+      despues: { numero: venta.numero, total: venta.total, estado: venta.estado },
+    });
+
+    const cobrada = await this.pagosPosService.cobrarCuentaCorrienteSinCaja(
+      venta.id,
+      sucursalId,
+      empleadoId,
+    );
+    await this.auditoriaService.registrar({
+      modulo: 'pos',
+      accion: 'COBRAR_VENTA_CUENTA_CORRIENTE',
+      entidad: 'comprobante',
+      entidad_id: cobrada.id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion: `Venta cargada a cuenta corriente ${cobrada.numero}`,
+      antes: { estado: venta.estado },
+      despues: { estado: cobrada.estado, caja_id: cobrada.caja_id, total: cobrada.total },
+    });
+
+    return { venta: cobrada };
   }
 
   async cobrarVenta(
@@ -477,6 +533,12 @@ export class PosVentasService {
       pagos: PagoPos[];
       vendedor: { id: string; nombreCompleto: string; email: string } | null;
       cajero: { id: string; nombreCompleto: string; email: string } | null;
+      margen: {
+        costo_total: number;
+        ganancia_total: number;
+        margen_porcentaje: number;
+        iva_estimado: number;
+      };
     }[]
   > {
     // 1. Tomamos solamente ventas POS de la sucursal activa y de la caja indicada.
@@ -502,6 +564,18 @@ export class PosVentasService {
       ? await this.empleadoRepo.find({ where: { id: In(empleadoIds) } })
       : [];
     const empleadosById = new Map(empleados.map((empleado) => [empleado.id, empleado]));
+    const productoIds = Array.from(
+      new Set(
+        ventas
+          .flatMap((venta) => venta.items ?? [])
+          .map((item) => item.producto_id)
+          .filter(Boolean) as string[],
+      ),
+    );
+    const productos = productoIds.length
+      ? await this.productoRepo.find({ where: { id: In(productoIds) } })
+      : [];
+    const productosById = new Map(productos.map((producto) => [producto.id, producto]));
 
     // 3. Armamos una respuesta lista para mostrar: venta, pagos y responsables.
     return ventas.map((venta, index) => ({
@@ -515,6 +589,7 @@ export class PosVentasService {
       cajero: this.empleadoResumen(
         venta.empleado_cajero_id ? empleadosById.get(venta.empleado_cajero_id) : null,
       ),
+      margen: this.calcularMargen(venta, productosById, null),
     }));
   }
 

@@ -117,11 +117,16 @@ export class CajaService {
       throw new BadRequestException('Tipo de movimiento manual invalido');
     }
 
+    const monto = Number(dto.monto);
+    if (dto.tipo === TipoMovimientoCaja.EGRESO && monto > 0) {
+      await this.validarSaldoDisponibleParaEgreso(caja.id, monto);
+    }
+
     // 3. Guardamos el movimiento con empleado responsable y descripcion.
     const movimiento = this.movimientoRepo.create({
       caja_id: caja.id,
       tipo: dto.tipo,
-      monto: Number(dto.monto),
+      monto,
       empleado_id: empleadoId,
       medio_pago_id: dto.medio_pago_id ?? null,
       categoria_egreso: dto.categoria_egreso ?? null,
@@ -224,10 +229,13 @@ export class CajaService {
       throw new BadRequestException('No se pueden registrar egresos en una caja cerrada');
     }
 
+    const monto = Number(params.monto);
+    await this.validarSaldoDisponibleParaEgreso(caja.id, monto);
+
     const movimiento = this.movimientoRepo.create({
       caja_id: caja.id,
       tipo: TipoMovimientoCaja.EGRESO,
-      monto: Number(params.monto),
+      monto,
       empleado_id: params.empleadoId,
       comprobante_id: params.comprobanteId ?? null,
       medio_pago_id: params.medioPagoId ?? null,
@@ -412,6 +420,18 @@ export class CajaService {
     return Number(total.toFixed(2));
   }
 
+  private async validarSaldoDisponibleParaEgreso(
+    cajaId: string,
+    monto: number,
+  ): Promise<void> {
+    const disponible = await this.calcularMontoEsperado(cajaId);
+    if (monto > disponible) {
+      throw new BadRequestException(
+        `Saldo insuficiente en caja. Disponible: ${disponible.toFixed(2)}, egreso solicitado: ${monto.toFixed(2)}`,
+      );
+    }
+  }
+
   async findAbiertaPorEmpleado(
     sucursalId: string,
     empleadoId: string,
@@ -437,14 +457,44 @@ export class CajaService {
     return cantidad > 0;
   }
 
-  async findAll(sucursalId: string, empleadoId?: string): Promise<Caja[]> {
-    return this.cajaRepo.find({
-      where: empleadoId
-        ? { sucursal_id: sucursalId, empleado_id: empleadoId }
-        : { sucursal_id: sucursalId },
-      relations: ['movimientos'],
-      order: { fecha_apertura: 'DESC' },
-    });
+  async findAll(
+    sucursalId: string,
+    options: {
+      empleadoId?: string;
+      soloAbiertas?: boolean;
+      desde?: string;
+      hasta?: string;
+      estado?: EstadoCaja;
+    } = {},
+  ): Promise<Caja[]> {
+    const qb = this.cajaRepo
+      .createQueryBuilder('caja')
+      .leftJoinAndSelect('caja.movimientos', 'movimientos')
+      .where('caja.sucursal_id = :sucursalId', { sucursalId })
+      .orderBy('caja.fecha_apertura', 'DESC')
+      .addOrderBy('movimientos.fecha', 'DESC');
+
+    if (options.empleadoId) {
+      qb.andWhere('caja.empleado_id = :empleadoId', {
+        empleadoId: options.empleadoId,
+      });
+    }
+    if (options.soloAbiertas) {
+      qb.andWhere('caja.estado = :estadoAbierta', {
+        estadoAbierta: EstadoCaja.ABIERTA,
+      });
+    } else if (options.estado) {
+      qb.andWhere('caja.estado = :estado', { estado: options.estado });
+    }
+    if (options.desde || options.hasta) {
+      const { desde, hasta } = this.rangoFechas(options.desde, options.hasta);
+      qb.andWhere('caja.fecha_apertura <= :hasta', { hasta });
+      qb.andWhere('(caja.fecha_cierre IS NULL OR caja.fecha_cierre >= :desde)', {
+        desde,
+      });
+    }
+
+    return qb.getMany();
   }
 
   async findOne(id: string, sucursalId?: string, empleadoId?: string): Promise<Caja> {
@@ -490,5 +540,23 @@ export class CajaService {
         fecha: movimiento.fecha,
       })),
     };
+  }
+
+  private rangoFechas(desde?: string, hasta?: string): { desde: Date; hasta: Date } {
+    const inicio = desde ? new Date(desde) : new Date();
+    const fin = hasta ? new Date(hasta) : new Date();
+
+    if (!desde || this.esFechaSinHora(desde)) {
+      inicio.setHours(0, 0, 0, 0);
+    }
+    if (!hasta || this.esFechaSinHora(hasta)) {
+      fin.setHours(23, 59, 59, 999);
+    }
+
+    return { desde: inicio, hasta: fin };
+  }
+
+  private esFechaSinHora(value?: string): boolean {
+    return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 }

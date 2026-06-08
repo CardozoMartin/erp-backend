@@ -39,6 +39,7 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
 import { PedidosEnvioModule } from './pedidos-envio/pedidos-envio.module';
 import { Empleado } from './empleados/entities/empleado.entity';
 import { EmpleadoSucursal } from './empleados/entities/empleado-sucursal.entity';
+import { ConfiguracionEmailSucursal } from './configuracion/entities/configuracion-email.entity';
 import { ConfiguracionSucursal } from './configuracion/entities/configuracion.entity';
 import { ListaPrecio } from './lista-precio/entities/lista-precio.entity';
 import { MarcaProducto } from './marca_productos/entities/marca_producto.entity';
@@ -67,6 +68,7 @@ import { Stock } from './stock/entities/stock.entity';
     TypeOrmModule.forFeature([
       Empleado,
       EmpleadoSucursal,
+      ConfiguracionEmailSucursal,
       ConfiguracionSucursal,
       ListaPrecio,
       MarcaProducto,

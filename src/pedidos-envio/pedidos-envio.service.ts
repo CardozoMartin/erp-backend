@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { CajaService } from 'src/caja/caja.service';
+import { EstadoCaja } from 'src/caja/entities/caja.entity';
 import { ClientesService } from 'src/clientes/clientes.service';
 import { ComprobantesService } from 'src/comprobantes/comprobantes.service';
 import {
@@ -29,6 +31,7 @@ export class PedidosEnvioService {
   constructor(
     @InjectRepository(PedidoEnvio)
     private readonly pedidoRepo: Repository<PedidoEnvio>,
+    private readonly cajaService: CajaService,
     private readonly clientesService: ClientesService,
     private readonly comprobantesService: ComprobantesService,
     private readonly pagosPosService: PagosPosService,
@@ -46,6 +49,10 @@ export class PedidosEnvioService {
     }
     if (!dto.items?.length) {
       throw new BadRequestException('Debe agregar al menos un producto');
+    }
+    const caja = await this.cajaService.findOne(dto.caja_id, sucursalId);
+    if (caja.estado !== EstadoCaja.ABIERTA) {
+      throw new BadRequestException('Debe seleccionar una caja abierta para crear el pedido');
     }
 
     const cliente = dto.cliente_id
@@ -72,6 +79,7 @@ export class PedidosEnvioService {
     const venta = await this.comprobantesService.create(sucursalId, empleadoId, {
       tipo: TipoComprobante.VENTA,
       estado: EstadoComprobante.PENDIENTE_COBRO,
+      caja_id: caja.id,
       cliente_id: cliente.id,
       empleado_vendedor_id: empleadoId,
       observaciones: dto.observaciones ?? 'Pedido de envio',
@@ -111,6 +119,7 @@ export class PedidosEnvioService {
         estado: guardado.estado,
         estado_pago: guardado.estado_pago,
         comprobante_id: venta.id,
+        caja_id: caja.id,
         total: venta.total,
         cliente_id: cliente.id,
         direccion_entrega: guardado.direccion_entrega,
@@ -133,6 +142,18 @@ export class PedidosEnvioService {
       relations: ['comprobante', 'comprobante.items'],
       order: { created_at: 'DESC' },
     });
+  }
+
+  async findByCaja(cajaId: string, sucursalId: string): Promise<PedidoEnvio[]> {
+    await this.cajaService.findOne(cajaId, sucursalId);
+    return this.pedidoRepo
+      .createQueryBuilder('pedido')
+      .leftJoinAndSelect('pedido.comprobante', 'comprobante')
+      .leftJoinAndSelect('comprobante.items', 'items')
+      .where('pedido.sucursal_id = :sucursalId', { sucursalId })
+      .andWhere('comprobante.caja_id = :cajaId', { cajaId })
+      .orderBy('pedido.created_at', 'DESC')
+      .getMany();
   }
 
   async findOne(id: string, sucursalId: string): Promise<PedidoEnvio> {

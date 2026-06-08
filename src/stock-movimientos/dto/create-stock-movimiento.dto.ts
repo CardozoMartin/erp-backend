@@ -29,4 +29,8 @@ export class AjusteManualStockDto {
   @IsOptional()
   @IsString()
   descripcion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  cajaId?: string;
 }

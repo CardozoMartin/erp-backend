@@ -22,6 +22,12 @@ import {
 } from './dto/cuenta-corriente-operacion.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { CajaService } from 'src/caja/caja.service';
+import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email.service';
+import {
+  EnviarResumenCuentaDto,
+  TipoResumenCuenta,
+} from './dto/enviar-resumen-cuenta.dto';
 
 @Injectable()
 export class ClientesService {
@@ -40,6 +46,8 @@ export class ClientesService {
 
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
+    private readonly cajaService: CajaService,
+    private readonly configuracionEmailService: ConfiguracionEmailService,
   ) {}
 
   async create(
@@ -447,7 +455,14 @@ export class ClientesService {
     empleadoId?: string | null,
     sucursalId?: string | null,
   ): Promise<MovimientoCuentaCorriente> {
-    return this.registrarPago(
+    if (!sucursalId) {
+      throw new BadRequestException('Seleccione una sucursal para registrar el pago');
+    }
+    if (!empleadoId) {
+      throw new BadRequestException('No se pudo identificar el empleado del pago');
+    }
+
+    const movimiento = await this.registrarPago(
       clienteId,
       dto.monto,
       dto.descripcion,
@@ -455,6 +470,17 @@ export class ClientesService {
       empleadoId,
       sucursalId,
     );
+    await this.cajaService.registrarCobro({
+      cajaId: dto.caja_id,
+      sucursalId,
+      empleadoId,
+      comprobanteId: dto.comprobante_id ?? null,
+      medioPagoId: dto.medio_pago_id ?? null,
+      monto: dto.monto,
+      referencia: dto.referencia ?? null,
+      descripcion: dto.descripcion ?? 'Pago de cuenta corriente',
+    });
+    return movimiento;
   }
 
   async registrarNotaCredito(
@@ -738,6 +764,68 @@ export class ClientesService {
     }
   }
 
+  async enviarResumenCuentaCorriente(
+    clienteId: string,
+    dto: EnviarResumenCuentaDto,
+    empleadoId?: string | null,
+    sucursalId?: string | null,
+  ) {
+    if (!sucursalId) {
+      throw new BadRequestException('Seleccione una sucursal para enviar emails');
+    }
+    const cliente = await this.findOne(clienteId);
+    if (!cliente.cuentaCorriente) {
+      throw new BadRequestException('El cliente no tiene cuenta corriente');
+    }
+    const movimientos = this.filtrarMovimientosResumen(
+      await this.getMovimientos(clienteId),
+      dto,
+    );
+    const destino = dto.destino.trim().toLowerCase();
+    const nombre = this.nombreCliente(cliente);
+    const saldo = Number(cliente.cuentaCorriente.saldo ?? 0);
+    const asunto =
+      dto.asunto?.trim() || `Resumen de cuenta corriente - ${nombre}`;
+    const tipoResumen = dto.tipo_resumen ?? TipoResumenCuenta.CARGOS;
+    const adjuntarPdf = dto.adjuntar_pdf !== false;
+
+    await this.configuracionEmailService.enviarCorreoSucursal(sucursalId, {
+      to: destino,
+      subject: asunto,
+      text: this.buildResumenCuentaText(cliente, movimientos, dto),
+      attachments: adjuntarPdf
+        ? [
+            {
+              filename: this.nombreArchivoResumenCuenta(cliente, dto),
+              contentType: 'application/pdf',
+              content: this.buildResumenCuentaPdf(cliente, movimientos, dto),
+            },
+          ]
+        : undefined,
+    });
+
+    await this.auditoriaService.registrar({
+      modulo: 'clientes',
+      accion: 'ENVIAR_RESUMEN_CUENTA_CORRIENTE_EMAIL',
+      entidad: 'cliente',
+      entidad_id: clienteId,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Resumen de cuenta corriente enviado a ${destino}`,
+      metadata: {
+        destino,
+        saldo,
+        desde: dto.desde ?? null,
+        hasta: dto.hasta ?? null,
+        tipo_resumen: tipoResumen,
+        adjuntar_pdf: adjuntarPdf,
+        movimientos: movimientos.length,
+      },
+    });
+
+    return { ok: true, message: `Resumen de cuenta corriente enviado a ${destino}` };
+  }
+
   private calcularFechaVencimiento(plan?: PlanPago | null): Date | null {
     if (!plan) return null;
 
@@ -760,5 +848,320 @@ export class ClientesService {
 
   private round(value: number): number {
     return Number(Number(value).toFixed(2));
+  }
+
+  private buildResumenCuentaText(
+    cliente: Cliente,
+    movimientos: MovimientoCuentaCorriente[],
+    dto: EnviarResumenCuentaDto,
+  ) {
+    const cc = cliente.cuentaCorriente!;
+    const saldo = Number(cc.saldo ?? 0);
+    const totalCargos = movimientos
+      .filter((movimiento) => Number(movimiento.monto) > 0 && !movimiento.omitido)
+      .reduce((sum, movimiento) => sum + Number(movimiento.monto), 0);
+    const totalCreditos = movimientos
+      .filter((movimiento) => Number(movimiento.monto) < 0 && !movimiento.omitido)
+      .reduce((sum, movimiento) => sum + Math.abs(Number(movimiento.monto)), 0);
+    const ultimosMovimientos = movimientos.slice(0, 25).map((movimiento) => {
+      const comprobante = movimiento.comprobante?.numero
+        ? ` | Comprobante ${movimiento.comprobante.numero}`
+        : '';
+      const vencimiento = movimiento.fecha_vencimiento
+        ? ` | Vence ${this.formatDate(movimiento.fecha_vencimiento)}`
+        : '';
+      const omitido = movimiento.omitido ? ' | Omitido' : '';
+      return [
+        `- ${this.formatDate(movimiento.fecha)} | ${movimiento.tipo}`,
+        `${this.formatCurrency(Number(movimiento.monto ?? 0))}`,
+        movimiento.descripcion ? `| ${movimiento.descripcion}` : '',
+        comprobante,
+        vencimiento,
+        omitido,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    });
+
+    return [
+      dto.mensaje?.trim() || 'Te enviamos el resumen actualizado de tu cuenta corriente.',
+      '',
+      `Cliente: ${this.nombreCliente(cliente)}`,
+      `Documento: ${cliente.cuit || cliente.dni || '-'}`,
+      `Fecha de envio: ${this.formatDate(new Date())}`,
+      `Periodo: ${this.describePeriodoResumen(dto)}`,
+      `Detalle incluido: ${this.labelTipoResumen(dto.tipo_resumen ?? TipoResumenCuenta.CARGOS)}`,
+      '',
+      `Saldo actual: ${this.formatCurrency(saldo)}`,
+      `Limite de credito: ${
+        Number(cc.limite_credito ?? 0) > 0
+          ? this.formatCurrency(Number(cc.limite_credito))
+          : 'Sin limite'
+      }`,
+      `Total cargos: ${this.formatCurrency(totalCargos)}`,
+      `Total pagos/creditos: ${this.formatCurrency(totalCreditos)}`,
+      '',
+      'Ultimos movimientos:',
+      ultimosMovimientos.length ? ultimosMovimientos.join('\n') : 'Sin movimientos registrados.',
+      '',
+      saldo > 0
+        ? `Total adeudado: ${this.formatCurrency(saldo)}`
+        : `Saldo a favor o sin deuda: ${this.formatCurrency(Math.abs(saldo))}`,
+    ].join('\n');
+  }
+
+  private filtrarMovimientosResumen(
+    movimientos: MovimientoCuentaCorriente[],
+    dto: EnviarResumenCuentaDto,
+  ) {
+    const desde = dto.desde ? new Date(`${dto.desde}T00:00:00`) : null;
+    const hasta = dto.hasta ? new Date(`${dto.hasta}T23:59:59.999`) : null;
+    const tipoResumen = dto.tipo_resumen ?? TipoResumenCuenta.CARGOS;
+
+    if (desde && Number.isNaN(desde.getTime())) {
+      throw new BadRequestException('La fecha desde no es valida');
+    }
+    if (hasta && Number.isNaN(hasta.getTime())) {
+      throw new BadRequestException('La fecha hasta no es valida');
+    }
+    if (desde && hasta && desde > hasta) {
+      throw new BadRequestException('La fecha desde no puede ser posterior a hasta');
+    }
+
+    return movimientos.filter((movimiento) => {
+      const fecha = new Date(movimiento.fecha);
+      if (desde && fecha < desde) return false;
+      if (hasta && fecha > hasta) return false;
+      if (tipoResumen === TipoResumenCuenta.TODOS) return true;
+      if (tipoResumen === TipoResumenCuenta.CARGOS_Y_RECARGOS) {
+        return [TipoMovimientoCC.CARGO, TipoMovimientoCC.RECARGO_INTERES].includes(
+          movimiento.tipo,
+        );
+      }
+      if (tipoResumen === TipoResumenCuenta.COMPRAS) {
+        return movimiento.tipo === TipoMovimientoCC.CARGO && !!movimiento.comprobante_id;
+      }
+      return movimiento.tipo === TipoMovimientoCC.CARGO;
+    });
+  }
+
+  private buildResumenCuentaPdf(
+    cliente: Cliente,
+    movimientos: MovimientoCuentaCorriente[],
+    dto: EnviarResumenCuentaDto,
+  ) {
+    const cc = cliente.cuentaCorriente!;
+    const lines = [
+      'Resumen de cuenta corriente',
+      '',
+      `Cliente: ${this.nombreCliente(cliente)}`,
+      `Documento: ${cliente.cuit || cliente.dni || '-'}`,
+      `Fecha de envio: ${this.formatDate(new Date())}`,
+      `Periodo: ${this.describePeriodoResumen(dto)}`,
+      `Detalle incluido: ${this.labelTipoResumen(dto.tipo_resumen ?? TipoResumenCuenta.CARGOS)}`,
+      `Saldo actual: ${this.formatCurrency(Number(cc.saldo ?? 0))}`,
+      '',
+      ...this.resumenMovimientosPdfLines(movimientos),
+    ];
+    return this.createSimplePdf(lines);
+  }
+
+  private resumenMovimientosPdfLines(movimientos: MovimientoCuentaCorriente[]) {
+    if (!movimientos.length) return ['Sin movimientos para el filtro seleccionado.'];
+
+    const lines = [
+      'Detalle de compras/cargos',
+      this.pdfTableSeparator(),
+      `${this.padPdfCell('Fecha', 16)} ${this.padPdfCell('Producto', 42)} ${this.padPdfCell('Precio', 14, 'right')} ${this.padPdfCell('Acumulado', 14, 'right')}`,
+      this.pdfTableSeparator(),
+    ];
+    let acumulado = 0;
+    const ordenados = [...movimientos].sort(
+      (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime(),
+    );
+
+    for (const movimiento of ordenados) {
+      const items = movimiento.comprobante?.items ?? [];
+      if (!items.length) {
+        const monto = Number(movimiento.monto ?? 0);
+        acumulado += monto;
+        lines.push(
+          `${this.padPdfCell(this.formatDateShort(movimiento.fecha), 16)} ${this.padPdfCell(movimiento.descripcion || movimiento.tipo, 42)} ${this.padPdfCell(this.formatCurrencyCompact(monto), 14, 'right')} ${this.padPdfCell(this.formatCurrencyCompact(acumulado), 14, 'right')}`,
+        );
+        continue;
+      }
+
+      for (const item of items) {
+        const monto = Number(item.subtotal ?? 0);
+        acumulado += monto;
+        const producto = `${Number(item.cantidad ?? 0)} x ${item.descripcion}`;
+        lines.push(
+          `${this.padPdfCell(this.formatDateShort(movimiento.fecha), 16)} ${this.padPdfCell(producto, 42)} ${this.padPdfCell(this.formatCurrencyCompact(monto), 14, 'right')} ${this.padPdfCell(this.formatCurrencyCompact(acumulado), 14, 'right')}`,
+        );
+      }
+    }
+
+    lines.push(this.pdfTableSeparator());
+    lines.push(
+      `${this.padPdfCell('Total del periodo', 59)} ${this.padPdfCell(this.formatCurrencyCompact(acumulado), 29, 'right')}`,
+    );
+    return lines;
+  }
+
+  private pdfTableSeparator() {
+    return '-'.repeat(91);
+  }
+
+  private padPdfCell(value: string, length: number, align: 'left' | 'right' = 'left') {
+    const text = this.toPdfSafeText(value);
+    const trimmed = text.length > length ? `${text.slice(0, Math.max(0, length - 1))}.` : text;
+    return align === 'right' ? trimmed.padStart(length, ' ') : trimmed.padEnd(length, ' ');
+  }
+
+  private formatCurrencyCompact(value: number) {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+
+  private formatDateShort(value: Date) {
+    return new Date(value).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  }
+
+  private createSimplePdf(lines: string[]) {
+    const sanitizedLines = lines.flatMap((line) => this.wrapPdfLine(line, 96));
+    const pageSize = 48;
+    const pages: string[][] = [];
+    for (let index = 0; index < sanitizedLines.length; index += pageSize) {
+      pages.push(sanitizedLines.slice(index, index + pageSize));
+    }
+    if (!pages.length) pages.push(['Sin datos']);
+
+    const objects: string[] = [];
+    const catalogId = 1;
+    const pagesId = 2;
+    const fontId = 3;
+    const pageIds = pages.map((_, index) => 4 + index * 2);
+    const contentIds = pages.map((_, index) => 5 + index * 2);
+
+    objects[catalogId] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+    objects[pagesId] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+    objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';
+
+    pages.forEach((pageLines, index) => {
+      const content = [
+        'BT',
+        '/F1 10 Tf',
+        '40 790 Td',
+        '14 TL',
+        ...pageLines.map((line) => `(${this.escapePdfText(line)}) Tj T*`),
+        'ET',
+      ].join('\n');
+      const contentId = contentIds[index];
+      objects[contentId] = `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`;
+      objects[pageIds[index]] =
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+    });
+
+    const ordered = objects
+      .map((object, index) => ({ object, index }))
+      .filter((item) => item.object);
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+    for (const item of ordered) {
+      offsets[item.index] = Buffer.byteLength(pdf, 'latin1');
+      pdf += `${item.index} 0 obj\n${item.object}\nendobj\n`;
+    }
+    const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+    const maxId = Math.max(...ordered.map((item) => item.index));
+    pdf += `xref\n0 ${maxId + 1}\n`;
+    pdf += '0000000000 65535 f \n';
+    for (let index = 1; index <= maxId; index += 1) {
+      pdf += `${String(offsets[index] ?? 0).padStart(10, '0')} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${maxId + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return Buffer.from(pdf, 'latin1');
+  }
+
+  private wrapPdfLine(line: string, maxLength: number) {
+    const normalized = this.toPdfSafeText(line);
+    if (normalized.length <= maxLength) return [normalized];
+    const chunks: string[] = [];
+    for (let index = 0; index < normalized.length; index += maxLength) {
+      chunks.push(normalized.slice(index, index + maxLength));
+    }
+    return chunks;
+  }
+
+  private escapePdfText(value: string) {
+    return this.toPdfSafeText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  private toPdfSafeText(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, ' ');
+  }
+
+  private nombreArchivoResumenCuenta(cliente: Cliente, dto: EnviarResumenCuentaDto) {
+    const nombre = this.nombreCliente(cliente)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    const desde = dto.desde || 'inicio';
+    const hasta = dto.hasta || 'hoy';
+    return `resumen-cuenta-${nombre || 'cliente'}-${desde}-${hasta}.pdf`;
+  }
+
+  private describePeriodoResumen(dto: EnviarResumenCuentaDto) {
+    if (dto.desde && dto.hasta) return `${dto.desde} a ${dto.hasta}`;
+    if (dto.desde) return `Desde ${dto.desde}`;
+    if (dto.hasta) return `Hasta ${dto.hasta}`;
+    return 'Todos los movimientos disponibles';
+  }
+
+  private labelTipoResumen(tipo: TipoResumenCuenta) {
+    const labels: Record<TipoResumenCuenta, string> = {
+      [TipoResumenCuenta.CARGOS]: 'Compras y cargos',
+      [TipoResumenCuenta.COMPRAS]: 'Compras con comprobante',
+      [TipoResumenCuenta.CARGOS_Y_RECARGOS]: 'Compras, cargos y recargos',
+      [TipoResumenCuenta.TODOS]: 'Todos los movimientos',
+    };
+    return labels[tipo];
+  }
+
+  private nombreCliente(cliente: Cliente) {
+    return (
+      cliente.razon_social ||
+      [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') ||
+      'Cliente'
+    );
+  }
+
+  private formatCurrency(value: number) {
+    return value.toLocaleString('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      maximumFractionDigits: 2,
+    });
+  }
+
+  private formatDate(value: Date) {
+    return new Date(value).toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 }

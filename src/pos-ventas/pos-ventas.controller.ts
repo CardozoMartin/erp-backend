@@ -7,6 +7,7 @@ import {
   CrearVentaPosDto,
   DevolverVentaPosDto,
   EmitirDesdeVentaDto,
+  VentaCuentaCorrientePosDto,
   VentaCompletaPosDto,
 } from './dto/pos-venta.dto';
 import { PosVentasService } from './pos-ventas.service';
@@ -41,6 +42,16 @@ export class PosVentasController {
     @Body() dto: VentaCompletaPosDto,
   ) {
     return this.posVentasService.ventaCompleta(sucursalId, req.user.id, dto);
+  }
+
+  @Post('cuenta-corriente')
+  @RequierePermiso('ventas.crear')
+  ventaCuentaCorriente(
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: VentaCuentaCorrientePosDto,
+  ) {
+    return this.posVentasService.ventaCuentaCorriente(sucursalId, req.user.id, dto);
   }
 
   @Get()

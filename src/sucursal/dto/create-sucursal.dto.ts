@@ -101,7 +101,6 @@ export class CreateSucursalDto {
   // Ticket
   @IsString()
   @IsOptional()
-  @MaxLength(500)
   logoUrl?: string;
 
   @IsString()

@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Request } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
   AbrirCajaDto,
+  CajaQueryDto,
   CerrarCajaDto,
   RegistrarMovimientoCajaDto,
 } from './dto/create-caja.dto';
@@ -37,10 +38,21 @@ export class CajaController {
 
   @Get()
   @RequierePermiso('caja.ver')
-  findAll(@SucursalActiva() sucursalId: string, @Request() req) {
+  findAll(
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Query() query: CajaQueryDto,
+  ) {
+    const puedeVerTodas = this.puedeVerTodasLasCajas(req);
     return this.cajaService.findAll(
       sucursalId,
-      this.puedeVerTodasLasCajas(req) ? undefined : req.user.id,
+      {
+        empleadoId: puedeVerTodas ? undefined : req.user.id,
+        soloAbiertas: !puedeVerTodas,
+        desde: puedeVerTodas ? query.desde : undefined,
+        hasta: puedeVerTodas ? query.hasta : undefined,
+        estado: puedeVerTodas ? query.estado : undefined,
+      },
     );
   }
 

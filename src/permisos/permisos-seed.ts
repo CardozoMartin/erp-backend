@@ -218,6 +218,12 @@ export const permisosSeed: CrearPermisoDto[] = [
     descripcion: 'Permite configurar el flujo del punto de venta',
   },
   {
+    clave: 'config.email',
+    nombre: 'Configurar email',
+    modulo: 'admin',
+    descripcion: 'Permite configurar credenciales y envios por correo',
+  },
+  {
     clave: 'reportes.ver',
     nombre: 'Ver reportes',
     modulo: 'reportes',

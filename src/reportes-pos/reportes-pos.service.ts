@@ -63,6 +63,27 @@ export class ReportesPosService {
       .select('COALESCE(SUM(pago.monto + pago.recargo_monto), 0)', 'total_cobrado')
       .getRawOne();
 
+    const rentabilidad = await this.itemRepo
+      .createQueryBuilder('item')
+      .innerJoin('item.comprobante', 'comprobante')
+      .leftJoin(Producto, 'producto', 'producto.id = item.producto_id')
+      .where('comprobante.sucursal_id = :sucursalId', { sucursalId })
+      .andWhere('comprobante.tipo = :tipoVenta', {
+        tipoVenta: TipoComprobante.VENTA,
+      })
+      .andWhere('comprobante.estado = :estadoVenta', {
+        estadoVenta: EstadoComprobante.COBRADA,
+      })
+      .select('COALESCE(SUM(item.cantidad * producto.precio_costo), 0)', 'costo')
+      .addSelect('COALESCE(SUM(item.cantidad), 0)', 'unidades')
+      .addSelect('COALESCE(SUM(item.subtotal), 0)', 'total_items');
+    this.aplicarFechas(rentabilidad, query, 'comprobante.created_at');
+    this.aplicarFiltrosVenta(rentabilidad, query);
+    const rentabilidadRow = await rentabilidad.getRawOne();
+    const totalRentabilidad = this.number(rentabilidadRow?.total_items);
+    const costoRentabilidad = this.number(rentabilidadRow?.costo);
+    const gananciaRentabilidad = this.round(totalRentabilidad - costoRentabilidad);
+
     const stockSalidas = await this.baseStock(sucursalId, query)
       .andWhere('movimiento.tipo IN (:...tipos)', {
         tipos: ['SALIDA', 'DESPACHO'],
@@ -81,6 +102,15 @@ export class ReportesPosService {
       },
       cobros: {
         total: this.number(pagos?.total_cobrado),
+      },
+      rentabilidad: {
+        costo_estimado: costoRentabilidad,
+        ganancia_estimada: gananciaRentabilidad,
+        margen_porcentaje:
+          totalRentabilidad > 0
+            ? this.round((gananciaRentabilidad / totalRentabilidad) * 100)
+            : 0,
+        reposicion_estimada: costoRentabilidad,
       },
       notas_credito: {
         cantidad: Number(notas?.cantidad_notas ?? 0),
@@ -199,7 +229,6 @@ export class ReportesPosService {
   async cajas(sucursalId: string, query: ReportePosQueryDto) {
     const rows = await this.cajaRepo
       .createQueryBuilder('caja')
-      .leftJoin(MovimientoCaja, 'movimiento', 'movimiento.caja_id = caja.id')
       .leftJoin(Empleado, 'empleado', 'empleado.id = caja.empleado_id')
       .where('caja.sucursal_id = :sucursalId', { sucursalId })
       .select('caja.id', 'caja_id')
@@ -212,19 +241,11 @@ export class ReportesPosService {
       .addSelect('caja.monto_final_declarado', 'monto_final_declarado')
       .addSelect('caja.monto_final_calculado', 'monto_final_calculado')
       .addSelect('caja.diferencia', 'diferencia')
-      .addSelect(
-        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.COBRO}' THEN movimiento.monto ELSE 0 END), 0)`,
-        'cobros',
-      )
-      .addSelect(
-        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.EGRESO}' THEN movimiento.monto ELSE 0 END), 0)`,
-        'egresos',
-      )
       .groupBy('caja.id')
       .addGroupBy('empleado.nombreCompleto')
       .orderBy('caja.fecha_apertura', 'DESC');
 
-    this.aplicarFechas(rows, query, 'caja.fecha_apertura');
+    this.aplicarRangoCajas(rows, query);
     if (query.caja_id) rows.andWhere('caja.id = :cajaId', { cajaId: query.caja_id });
     if (query.empleado_id) {
       rows.andWhere('caja.empleado_id = :empleadoId', {
@@ -233,6 +254,12 @@ export class ReportesPosService {
     }
 
     const result = await rows.getRawMany();
+    const cajaIds = result.map((row) => row.caja_id).filter(Boolean);
+    const movimientosByCaja = await this.movimientosPorCaja(cajaIds);
+    const ventasByCaja = await this.ventasPorCaja(cajaIds);
+    const notasByCaja = await this.notasCreditoPorCaja(cajaIds);
+    const stockByCaja = await this.stockVendidoPorCaja(cajaIds);
+
     return result.map((row) => ({
       caja_id: row.caja_id,
       estado: row.estado,
@@ -241,8 +268,21 @@ export class ReportesPosService {
       fecha_apertura: row.fecha_apertura,
       fecha_cierre: row.fecha_cierre,
       monto_inicial: this.number(row.monto_inicial),
-      cobros: this.number(row.cobros),
-      egresos: this.number(row.egresos),
+      ventas: ventasByCaja.get(row.caja_id)?.ventas ?? 0,
+      total_vendido: ventasByCaja.get(row.caja_id)?.total ?? 0,
+      costo_vendido: ventasByCaja.get(row.caja_id)?.costo ?? 0,
+      ganancia_estimada: ventasByCaja.get(row.caja_id)?.ganancia ?? 0,
+      margen_porcentaje: ventasByCaja.get(row.caja_id)?.margen_porcentaje ?? 0,
+      reposicion_estimada: ventasByCaja.get(row.caja_id)?.costo ?? 0,
+      unidades_vendidas: ventasByCaja.get(row.caja_id)?.unidades ?? 0,
+      stock_salidas: stockByCaja.get(row.caja_id)?.salidas ?? 0,
+      cobros: movimientosByCaja.get(row.caja_id)?.cobros ?? 0,
+      ingresos_manuales: movimientosByCaja.get(row.caja_id)?.ingresos_manuales ?? 0,
+      egresos: movimientosByCaja.get(row.caja_id)?.egresos ?? 0,
+      ajustes: movimientosByCaja.get(row.caja_id)?.ajustes ?? 0,
+      dinero_esperado: movimientosByCaja.get(row.caja_id)?.dinero_esperado ?? this.number(row.monto_inicial),
+      notas_credito: notasByCaja.get(row.caja_id)?.cantidad ?? 0,
+      total_notas_credito: notasByCaja.get(row.caja_id)?.total ?? 0,
       monto_final_declarado: this.nullableNumber(row.monto_final_declarado),
       monto_final_calculado: this.nullableNumber(row.monto_final_calculado),
       diferencia: this.nullableNumber(row.diferencia),
@@ -285,6 +325,152 @@ export class ReportesPosService {
       });
     this.aplicarFiltrosVenta(qb, query);
     return qb;
+  }
+
+  private async movimientosPorCaja(cajaIds: string[]) {
+    const map = new Map<
+      string,
+      {
+        cobros: number;
+        ingresos_manuales: number;
+        egresos: number;
+        ajustes: number;
+        dinero_esperado: number;
+      }
+    >();
+    if (!cajaIds.length) return map;
+
+    const rows = await this.movimientoCajaRepo
+      .createQueryBuilder('movimiento')
+      .where('movimiento.caja_id IN (:...cajaIds)', { cajaIds })
+      .select('movimiento.caja_id', 'caja_id')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.APERTURA}' THEN movimiento.monto ELSE 0 END), 0)`,
+        'apertura',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.COBRO}' THEN movimiento.monto ELSE 0 END), 0)`,
+        'cobros',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.INGRESO_MANUAL}' THEN movimiento.monto ELSE 0 END), 0)`,
+        'ingresos_manuales',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.EGRESO}' THEN movimiento.monto ELSE 0 END), 0)`,
+        'egresos',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN movimiento.tipo = '${TipoMovimientoCaja.AJUSTE}' THEN movimiento.monto ELSE 0 END), 0)`,
+        'ajustes',
+      )
+      .groupBy('movimiento.caja_id')
+      .getRawMany();
+
+    for (const row of rows) {
+      const apertura = this.number(row.apertura);
+      const cobros = this.number(row.cobros);
+      const ingresosManuales = this.number(row.ingresos_manuales);
+      const egresos = this.number(row.egresos);
+      const ajustes = this.number(row.ajustes);
+      map.set(row.caja_id, {
+        cobros,
+        ingresos_manuales: ingresosManuales,
+        egresos,
+        ajustes,
+        dinero_esperado: this.round(apertura + cobros + ingresosManuales + ajustes - egresos),
+      });
+    }
+    return map;
+  }
+
+  private async ventasPorCaja(cajaIds: string[]) {
+    const map = new Map<
+      string,
+      {
+        ventas: number;
+        total: number;
+        costo: number;
+        ganancia: number;
+        margen_porcentaje: number;
+        unidades: number;
+      }
+    >();
+    if (!cajaIds.length) return map;
+
+    const rows = await this.itemRepo
+      .createQueryBuilder('item')
+      .innerJoin('item.comprobante', 'comprobante')
+      .leftJoin(Producto, 'producto', 'producto.id = item.producto_id')
+      .where('comprobante.caja_id IN (:...cajaIds)', { cajaIds })
+      .andWhere('comprobante.tipo = :tipoVenta', { tipoVenta: TipoComprobante.VENTA })
+      .andWhere('comprobante.estado = :estado', { estado: EstadoComprobante.COBRADA })
+      .select('comprobante.caja_id', 'caja_id')
+      .addSelect('COUNT(DISTINCT comprobante.id)', 'ventas')
+      .addSelect('COALESCE(SUM(item.subtotal), 0)', 'total')
+      .addSelect('COALESCE(SUM(item.cantidad * producto.precio_costo), 0)', 'costo')
+      .addSelect('COALESCE(SUM(item.cantidad), 0)', 'unidades')
+      .groupBy('comprobante.caja_id')
+      .getRawMany();
+
+    for (const row of rows) {
+      const total = this.number(row.total);
+      const costo = this.number(row.costo);
+      const ganancia = this.round(total - costo);
+      map.set(row.caja_id, {
+        ventas: Number(row.ventas ?? 0),
+        total,
+        costo,
+        ganancia,
+        margen_porcentaje: total > 0 ? this.round((ganancia / total) * 100) : 0,
+        unidades: this.number(row.unidades),
+      });
+    }
+    return map;
+  }
+
+  private async notasCreditoPorCaja(cajaIds: string[]) {
+    const map = new Map<string, { cantidad: number; total: number }>();
+    if (!cajaIds.length) return map;
+
+    const rows = await this.comprobanteRepo
+      .createQueryBuilder('comprobante')
+      .where('comprobante.caja_id IN (:...cajaIds)', { cajaIds })
+      .andWhere('comprobante.tipo = :tipoNota', { tipoNota: TipoComprobante.NOTA_CREDITO })
+      .andWhere('comprobante.estado != :anulado', { anulado: EstadoComprobante.ANULADO })
+      .select('comprobante.caja_id', 'caja_id')
+      .addSelect('COUNT(comprobante.id)', 'cantidad')
+      .addSelect('COALESCE(SUM(comprobante.total), 0)', 'total')
+      .groupBy('comprobante.caja_id')
+      .getRawMany();
+
+    for (const row of rows) {
+      map.set(row.caja_id, {
+        cantidad: Number(row.cantidad ?? 0),
+        total: this.number(row.total),
+      });
+    }
+    return map;
+  }
+
+  private async stockVendidoPorCaja(cajaIds: string[]) {
+    const map = new Map<string, { salidas: number }>();
+    if (!cajaIds.length) return map;
+
+    const rows = await this.stockMovimientoRepo
+      .createQueryBuilder('movimiento')
+      .innerJoin(Comprobante, 'comprobante', 'comprobante.id = movimiento.comprobante_id')
+      .where('comprobante.caja_id IN (:...cajaIds)', { cajaIds })
+      .andWhere('movimiento.tipo IN (:...tipos)', { tipos: ['SALIDA', 'DESPACHO'] })
+      .select('comprobante.caja_id', 'caja_id')
+      .addSelect('COALESCE(SUM(movimiento.cantidad), 0)', 'salidas')
+      .groupBy('comprobante.caja_id')
+      .getRawMany();
+
+    for (const row of rows) {
+      map.set(row.caja_id, { salidas: this.number(row.salidas) });
+    }
+    return map;
   }
 
   private baseComprobantes(sucursalId: string, query: ReportePosQueryDto) {
@@ -353,14 +539,33 @@ export class ReportesPosService {
     qb.andWhere(`${campo} <= :hasta`, { hasta });
   }
 
+  private aplicarRangoCajas(
+    qb: SelectQueryBuilder<Caja>,
+    query: ReportePosQueryDto,
+  ) {
+    const { desde, hasta } = this.periodo(query);
+    qb.andWhere('caja.fecha_apertura <= :hasta', { hasta });
+    qb.andWhere('(caja.fecha_cierre IS NULL OR caja.fecha_cierre >= :desde)', {
+      desde,
+    });
+  }
+
   private periodo(query: ReportePosQueryDto): { desde: Date; hasta: Date } {
     const desde = query.desde ? new Date(query.desde) : new Date();
     const hasta = query.hasta ? new Date(query.hasta) : new Date();
 
-    if (!query.desde) desde.setHours(0, 0, 0, 0);
-    if (!query.hasta) hasta.setHours(23, 59, 59, 999);
+    if (!query.desde || this.esFechaSinHora(query.desde)) {
+      desde.setHours(0, 0, 0, 0);
+    }
+    if (!query.hasta || this.esFechaSinHora(query.hasta)) {
+      hasta.setHours(23, 59, 59, 999);
+    }
 
     return { desde, hasta };
+  }
+
+  private esFechaSinHora(value?: string): boolean {
+    return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
   private number(value: unknown): number {
