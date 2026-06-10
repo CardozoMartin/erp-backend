@@ -12,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  EstadoArcaComprobante,
   EstadoComprobante,
   TipoComprobante,
 } from '../entities/comprobante.entity';
@@ -131,6 +132,32 @@ export class CreateComprobanteDto {
   @IsOptional()
   @IsDateString()
   cae_vencimiento?: string | null;
+
+  @IsOptional()
+  @IsEnum(EstadoArcaComprobante)
+  arca_estado?: EstadoArcaComprobante;
+
+  @IsOptional()
+  @IsString()
+  arca_modo?: string | null;
+
+  @IsOptional()
+  @IsString()
+  arca_error_codigo?: string | null;
+
+  @IsOptional()
+  @IsString()
+  arca_error_mensaje?: string | null;
+
+  @IsOptional()
+  arca_payload?: Record<string, any> | null;
+
+  @IsOptional()
+  arca_respuesta?: Record<string, any> | null;
+
+  @IsOptional()
+  @IsDateString()
+  arca_autorizado_at?: string | null;
 
   @IsOptional()
   @IsBoolean()

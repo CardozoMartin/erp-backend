@@ -4,6 +4,7 @@ import { TipoCliente } from 'src/clientes/entities/cliente.entity';
 import { ComprobantesService } from 'src/comprobantes/comprobantes.service';
 import {
   Comprobante,
+  EstadoArcaComprobante,
   EstadoComprobante,
   TipoComprobante,
 } from 'src/comprobantes/entities/comprobante.entity';
@@ -13,6 +14,18 @@ import {
   TipoEmisionFiscal,
   tipoFiscalAComprobante,
 } from './dto/emitir-comprobante-fiscal.dto';
+
+type FacturacionProvider = 'none' | 'mock' | 'arca';
+
+type AutorizacionFiscal = {
+  cae: string | null;
+  caeVencimiento: string | null;
+  estado: EstadoArcaComprobante;
+  modo: FacturacionProvider;
+  payload: Record<string, any> | null;
+  respuesta: Record<string, any> | null;
+  autorizadoAt: string | null;
+};
 
 @Injectable()
 export class FacturacionService {
@@ -33,6 +46,7 @@ export class FacturacionService {
     const tipo = tipoFiscalAComprobante(dto.tipo);
     await this.validarNoDuplicado(sucursalId, venta.id);
     await this.validarClienteSegunTipo(dto, venta);
+    const autorizacionFiscal = this.autorizarFiscal(dto, venta, tipo);
 
     // 2. Copiamos items y totales comerciales desde la venta. No validamos stock de nuevo.
     const comprobante = await this.comprobantesService.create(sucursalId, empleadoId, {
@@ -51,8 +65,13 @@ export class FacturacionService {
       descuento_global_monto: Number(venta.descuento_global_monto ?? 0),
       recargo_total: Number(venta.recargo_total ?? 0),
       codigo_fiscal: dto.codigo_fiscal ?? this.codigoFiscalDefault(tipo),
-      cae: dto.cae ?? null,
-      cae_vencimiento: dto.cae_vencimiento ?? null,
+      cae: autorizacionFiscal.cae,
+      cae_vencimiento: autorizacionFiscal.caeVencimiento,
+      arca_estado: autorizacionFiscal.estado,
+      arca_modo: autorizacionFiscal.modo,
+      arca_payload: autorizacionFiscal.payload,
+      arca_respuesta: autorizacionFiscal.respuesta,
+      arca_autorizado_at: autorizacionFiscal.autorizadoAt,
       observaciones: dto.observaciones ?? `${dto.tipo} emitido desde ${venta.numero}`,
       omitir_validacion_stock: true,
       items: venta.items.map((item) => ({
@@ -173,6 +192,124 @@ export class FacturacionService {
       TipoComprobante.FACTURA_B,
       TipoComprobante.FACTURA_C,
     ].includes(tipo);
+  }
+
+  private autorizarFiscal(
+    dto: EmitirComprobanteFiscalDto,
+    venta: Comprobante,
+    tipo: TipoComprobante,
+  ): AutorizacionFiscal {
+    const provider = this.facturacionProvider();
+    const esFacturaArca = [
+      TipoComprobante.FACTURA_A,
+      TipoComprobante.FACTURA_B,
+      TipoComprobante.FACTURA_C,
+    ].includes(tipo);
+
+    if (!esFacturaArca) {
+      return {
+        cae: null,
+        caeVencimiento: null,
+        estado: EstadoArcaComprobante.NO_REQUIERE,
+        modo: provider,
+        payload: null,
+        respuesta: null,
+        autorizadoAt: null,
+      };
+    }
+
+    if (dto.cae) {
+      return {
+        cae: dto.cae,
+        caeVencimiento: dto.cae_vencimiento ?? null,
+        estado: EstadoArcaComprobante.MANUAL,
+        modo: provider,
+        payload: null,
+        respuesta: {
+          origen: 'manual',
+          observacion: 'CAE cargado manualmente por el usuario',
+        },
+        autorizadoAt: new Date().toISOString(),
+      };
+    }
+
+    if (provider !== 'mock') {
+      return {
+        cae: null,
+        caeVencimiento: null,
+        estado: EstadoArcaComprobante.PENDIENTE,
+        modo: provider,
+        payload: this.buildPayloadFiscalMock(venta, tipo),
+        respuesta: {
+          estado: 'pendiente',
+          mensaje:
+            provider === 'arca'
+              ? 'Proveedor ARCA real aun no implementado'
+              : 'Facturacion ARCA desactivada',
+        },
+        autorizadoAt: null,
+      };
+    }
+
+    const cae = this.generarCaeMock(venta.id);
+    const caeVencimiento = this.fechaCaeVencimientoMock();
+    return {
+      cae,
+      caeVencimiento,
+      estado: EstadoArcaComprobante.AUTORIZADO,
+      modo: provider,
+      payload: this.buildPayloadFiscalMock(venta, tipo),
+      respuesta: {
+        estado: 'A',
+        resultado: 'AUTORIZADO',
+        cae,
+        cae_vencimiento: caeVencimiento,
+        observaciones: ['Autorizacion simulada en modo mock'],
+      },
+      autorizadoAt: new Date().toISOString(),
+    };
+  }
+
+  private facturacionProvider(): FacturacionProvider {
+    const value = (process.env.FACTURACION_PROVIDER || 'none')
+      .trim()
+      .toLowerCase();
+    if (value === 'mock' || value === 'arca') return value;
+    return 'none';
+  }
+
+  private buildPayloadFiscalMock(
+    venta: Comprobante,
+    tipo: TipoComprobante,
+  ): Record<string, any> {
+    return {
+      tipo_comprobante: this.codigoFiscalDefault(tipo),
+      venta_id: venta.id,
+      venta_numero: venta.numero,
+      punto_venta: venta.punto_venta,
+      cliente_id: venta.cliente_id,
+      total: Number(venta.total ?? 0),
+      subtotal: Number(venta.subtotal ?? 0),
+      descuento_total: Number(venta.descuento_total ?? 0),
+      recargo_total: Number(venta.recargo_total ?? 0),
+      items: (venta.items ?? []).map((item) => ({
+        descripcion: item.descripcion,
+        cantidad: Number(item.cantidad ?? 0),
+        precio_unitario: Number(item.precio_unitario ?? 0),
+        subtotal: Number(item.subtotal ?? 0),
+      })),
+    };
+  }
+
+  private generarCaeMock(ventaId: string): string {
+    const numeric = ventaId.replace(/\D/g, '').padEnd(14, '0').slice(0, 14);
+    return numeric || String(Date.now()).slice(-14).padStart(14, '0');
+  }
+
+  private fechaCaeVencimientoMock(): string {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() + 10);
+    return fecha.toISOString();
   }
 
   private codigoFiscalDefault(tipo: TipoComprobante): string | null {

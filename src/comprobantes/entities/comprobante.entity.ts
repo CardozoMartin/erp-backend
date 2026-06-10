@@ -41,6 +41,14 @@ export enum EstadoComprobante {
   REEMBOLSADA = 'REEMBOLSADA',
 }
 
+export enum EstadoArcaComprobante {
+  NO_REQUIERE = 'NO_REQUIERE',
+  PENDIENTE = 'PENDIENTE',
+  AUTORIZADO = 'AUTORIZADO',
+  RECHAZADO = 'RECHAZADO',
+  MANUAL = 'MANUAL',
+}
+
 @Entity('comprobantes')
 export class Comprobante {
   @PrimaryGeneratedColumn('uuid')
@@ -69,6 +77,31 @@ export class Comprobante {
 
   @Column({ type: 'timestamp', nullable: true })
   cae_vencimiento!: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: EstadoArcaComprobante,
+    default: EstadoArcaComprobante.NO_REQUIERE,
+  })
+  arca_estado!: EstadoArcaComprobante;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  arca_modo!: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  arca_error_codigo!: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  arca_error_mensaje!: string | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  arca_payload!: Record<string, any> | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  arca_respuesta!: Record<string, any> | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  arca_autorizado_at!: Date | null;
 
   @Column({ type: 'varchar', length: 36 })
   sucursal_id!: string;

@@ -23,6 +23,7 @@ import { UpdateComprobanteDto } from './dto/update-comprobante.dto';
 import { EnviarComprobanteEmailDto } from './dto/enviar-comprobante-email.dto';
 import {
   Comprobante,
+  EstadoArcaComprobante,
   EstadoComprobante,
   TipoComprobante,
 } from './entities/comprobante.entity';
@@ -113,6 +114,17 @@ export class ComprobantesService {
         codigo_fiscal: dto.codigo_fiscal ?? null,
         cae: dto.cae ?? null,
         cae_vencimiento: dto.cae_vencimiento ? new Date(dto.cae_vencimiento) : null,
+        arca_estado: dto.arca_estado ?? this.estadoArcaInicial(dto.tipo, dto.cae),
+        arca_modo: dto.arca_modo ?? null,
+        arca_error_codigo: dto.arca_error_codigo ?? null,
+        arca_error_mensaje: dto.arca_error_mensaje ?? null,
+        arca_payload: dto.arca_payload ?? null,
+        arca_respuesta: dto.arca_respuesta ?? null,
+        arca_autorizado_at: dto.arca_autorizado_at
+          ? new Date(dto.arca_autorizado_at)
+          : dto.cae
+            ? new Date()
+            : null,
         sucursal_id: sucursalId,
         caja_id: dto.caja_id ?? null,
         cliente_id: dto.cliente_id ?? null,
@@ -598,6 +610,22 @@ export class ComprobantesService {
     return EstadoComprobante.BORRADOR;
   }
 
+  private estadoArcaInicial(
+    tipo: TipoComprobante,
+    cae?: string | null,
+  ): EstadoArcaComprobante {
+    if (
+      ![
+        TipoComprobante.FACTURA_A,
+        TipoComprobante.FACTURA_B,
+        TipoComprobante.FACTURA_C,
+      ].includes(tipo)
+    ) {
+      return EstadoArcaComprobante.NO_REQUIERE;
+    }
+    return cae ? EstadoArcaComprobante.MANUAL : EstadoArcaComprobante.PENDIENTE;
+  }
+
   private puntoVentaDesdeTipo(
     tipo: TipoComprobante,
     prefijo: string,
@@ -686,6 +714,13 @@ export class ComprobantesService {
       codigo_fiscal: comprobante.codigo_fiscal,
       cae: comprobante.cae,
       cae_vencimiento: comprobante.cae_vencimiento,
+      arca_estado: comprobante.arca_estado,
+      arca_modo: comprobante.arca_modo,
+      arca_error_codigo: comprobante.arca_error_codigo,
+      arca_error_mensaje: comprobante.arca_error_mensaje,
+      arca_payload: comprobante.arca_payload,
+      arca_respuesta: comprobante.arca_respuesta,
+      arca_autorizado_at: comprobante.arca_autorizado_at,
       sucursal_id: comprobante.sucursal_id,
       caja_id: comprobante.caja_id,
       cliente_id: comprobante.cliente_id,
