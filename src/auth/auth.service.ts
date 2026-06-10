@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { EmpleadoSucursal } from 'src/empleados/entities/empleado-sucursal.entity';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +20,7 @@ export class AuthService {
     @InjectRepository(EmpleadoSucursal)
     private readonly empleadoSucursalRepo: Repository<EmpleadoSucursal>,
     private readonly jwtService: JwtService,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
 
   private calcularPermisos(empleado: Empleado): string[] {
@@ -98,6 +100,17 @@ export class AuthService {
     };
 
     const token = this.jwtService.sign(payload);
+
+    await this.auditoriaService.registrar({
+      modulo: 'auth',
+      accion: 'LOGIN',
+      entidad: 'empleado',
+      entidad_id: empleado.id,
+      empleado_id: empleado.id,
+      sucursal_id: sucursalId,
+      descripcion: `Inicio de sesion de ${empleado.email}`,
+      metadata: { email: empleado.email },
+    });
 
     return {
       token,
@@ -184,5 +197,18 @@ export class AuthService {
         nombre: asignacion.sucursal.nombre,
       },
     };
+  }
+
+  async logout(empleadoId: string, sucursalId?: string | null) {
+    await this.auditoriaService.registrar({
+      modulo: 'auth',
+      accion: 'LOGOUT',
+      entidad: 'empleado',
+      entidad_id: empleadoId,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId ?? null,
+      descripcion: 'Cierre de sesion',
+    });
+    return { ok: true };
   }
 }

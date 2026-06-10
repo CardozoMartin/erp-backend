@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsNotEmpty,
   IsOptional,
+  IsNumber,
   IsString,
   IsUUID,
   MaxLength,
@@ -58,6 +59,18 @@ export class CrearEmpleadoDto {
   @IsBoolean()
   @IsOptional()
   esSucursalPrincipal?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  bono_ventas_activo?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  meta_mensual_ventas?: number;
+
+  @IsNumber()
+  @IsOptional()
+  bono_mensual_ventas?: number;
 }
 
 // asignar-roles.dto.ts  ← para el endpoint PATCH /empleados/:id/roles
@@ -78,6 +91,12 @@ export class RespuestaEmpleadoDto {
   cargo!: string;
   foto_url!: string | null;
   activo!: boolean;
+  bono_ventas_activo!: boolean;
+  meta_mensual_ventas!: number;
+  bono_mensual_ventas!: number;
+  ventas_mes_actual!: number;
+  avance_bono_ventas!: number;
+  bono_ventas_corresponde!: boolean;
   roles!: { id: string; nombre: string; rutaInicio: string }[];
   permisos!: string[]; // ['ventas.crear', 'caja.cobrar', ...]
   sucursales!: {

@@ -1,0 +1,29 @@
+import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
+import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
+import { CobrarComprobanteDto } from './dto/create-pago-pos.dto';
+import { PagosPosService } from './pagos-pos.service';
+
+@Controller('pagos-pos')
+export class PagosPosController {
+  constructor(private readonly pagosPosService: PagosPosService) {}
+
+  @Post('comprobantes/:comprobanteId/cobrar')
+  cobrar(
+    @Param('comprobanteId') comprobanteId: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: CobrarComprobanteDto,
+  ) {
+    return this.pagosPosService.cobrar(
+      comprobanteId,
+      sucursalId,
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Get('comprobantes/:comprobanteId')
+  findByComprobante(@Param('comprobanteId') comprobanteId: string) {
+    return this.pagosPosService.findByComprobante(comprobanteId);
+  }
+}

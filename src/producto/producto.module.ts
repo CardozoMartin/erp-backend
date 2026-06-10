@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
 import { ProductoPreciosModule } from 'src/producto_precios/producto_precios.module';
 import { Sucursal } from 'src/sucursal/entities/sucursal.entity';
@@ -20,6 +21,7 @@ import { ProductoService } from './producto.service';
 
 @Module({
   imports: [
+    AuditoriaModule,
     ProductoPreciosModule,
     SucursalModule,
     TypeOrmModule.forFeature([

@@ -24,6 +24,7 @@ import { ProductoSucursal } from './entities/producto-sucursal-entity';
 import { Sucursal } from 'src/sucursal/entities/sucursal.entity';
 import { ProductoPrecio } from 'src/producto_precios/entities/producto_precio.entity';
 import { SucursalService } from 'src/sucursal/sucursal.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 
 @Injectable()
 export class ProductoService {
@@ -71,6 +72,7 @@ export class ProductoService {
     private readonly productoPrecioService: ProductoPreciosService,
     private readonly sucursalService: SucursalService,
     private readonly dataSource: DataSource,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
 
   private normalizarPrecios<T extends Record<string, any>>(data: T): T {
@@ -105,10 +107,17 @@ export class ProductoService {
     }
   }
 
+  private normalizeOptionalText(value: string | null | undefined) {
+    if (value === undefined) return undefined;
+    const normalized = value?.trim?.() ?? null;
+    return normalized || null;
+  }
+
   //Servicio para crear Producto Completo con variantes, atributos, stock, lotes, imagenes y ofertas en una sola transaccion
   async create(
     createProductoDto: CreateProductoDto,
     sucursalActivaId?: string,
+    empleadoId?: string | null,
   ): Promise<Producto> {
     createProductoDto.nombre = createProductoDto.nombre.trim();
     createProductoDto.codigo_barras =
@@ -517,7 +526,25 @@ export class ProductoService {
         }
       }
       await queryRunner.commitTransaction();
-      return this.findOne(producto.id);
+      const creado = await this.findOne(producto.id);
+      await this.auditoriaService.registrar({
+        modulo: 'productos',
+        accion: 'CREAR_PRODUCTO',
+        entidad: 'producto',
+        entidad_id: creado.id,
+        empleado_id: empleadoId ?? null,
+        sucursal_id: sucursalActivaId ?? null,
+        descripcion: `Producto creado: ${creado.nombre}`,
+        despues: this.snapshotProducto(creado),
+        metadata: {
+          precio_costo: creado.precio_costo,
+          precio_venta: creado.precio_venta ?? creado.precio_base,
+          margen_ganancia: creado.margen_ganancia,
+          stock_total: this.stockTotal(creado),
+          variantes: creado.variantes?.length ?? 0,
+        },
+      });
+      return creado;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -631,9 +658,12 @@ export class ProductoService {
   async update(
     id: string,
     updateProductoDto: UpdateProductoDto,
+    empleadoId?: string | null,
+    sucursalActivaId?: string | null,
   ): Promise<Producto> {
     // 1. Verificar que el producto existe
     const producto = await this.findOne(id);
+    const antes = this.snapshotProducto(producto);
     if (updateProductoDto.nombre) {
       updateProductoDto.nombre = updateProductoDto.nombre.trim();
     }
@@ -720,7 +750,7 @@ export class ProductoService {
       if (stock !== undefined) {
         await queryRunner.manager.delete(Stock, {
           producto_id: id,
-          variante_id: null as any,
+          variante_id: IsNull(),
         });
         if (stock && stock.length > 0) {
           for (const stockDto of stock) {
@@ -739,7 +769,7 @@ export class ProductoService {
       if (lotes !== undefined) {
         await queryRunner.manager.delete(Lote, {
           producto_id: id,
-          variante_id: null as any,
+          variante_id: IsNull(),
         });
         if (lotes && lotes.length > 0) {
           for (const loteDto of lotes) {
@@ -758,7 +788,7 @@ export class ProductoService {
       if (imagenes !== undefined) {
         await queryRunner.manager.delete(Imagen, {
           producto_id: id,
-          variante_id: null as any,
+          variante_id: IsNull(),
         });
         if (imagenes && imagenes.length > 0) {
           for (const imagenDto of imagenes) {
@@ -776,7 +806,7 @@ export class ProductoService {
       if (ofertas !== undefined) {
         await queryRunner.manager.delete(Oferta, {
           producto_id: id,
-          variante_id: null as any,
+          variante_id: IsNull(),
         });
         if (ofertas && ofertas.length > 0) {
           for (const ofertaDto of ofertas) {
@@ -883,7 +913,26 @@ export class ProductoService {
       }
 
       await queryRunner.commitTransaction();
-      return this.findOne(id);
+      const actualizado = await this.findOne(id);
+      await this.auditoriaService.registrar({
+        modulo: 'productos',
+        accion: 'ACTUALIZAR_PRODUCTO',
+        entidad: 'producto',
+        entidad_id: id,
+        empleado_id: empleadoId ?? null,
+        sucursal_id: sucursalActivaId ?? null,
+        descripcion: `Producto actualizado: ${actualizado.nombre}`,
+        antes,
+        despues: this.snapshotProducto(actualizado),
+        metadata: {
+          campos_recibidos: Object.keys(updateProductoDto),
+          cambios_sensibles: this.cambiosSensiblesProducto(
+            antes,
+            this.snapshotProducto(actualizado),
+          ),
+        },
+      });
+      return actualizado;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -892,16 +941,34 @@ export class ProductoService {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(
+    id: string,
+    empleadoId?: string | null,
+    sucursalActivaId?: string | null,
+  ): Promise<void> {
     const producto = await this.productoRepo.findOne({ where: { id } });
     if (!producto) {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
     await this.productoRepo.remove(producto);
+    await this.auditoriaService.registrar({
+      modulo: 'productos',
+      accion: 'ELIMINAR_PRODUCTO',
+      entidad: 'producto',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalActivaId ?? null,
+      descripcion: `Producto eliminado: ${producto.nombre}`,
+      antes: this.snapshotProducto(producto),
+    });
   }
 
   //servicio para actualizar el stock de un producto o variante especifica, si se envia el id de la variante se actualiza el stock de la variante, sino se actualiza el stock a nivel producto
-  async updateStockProduct(id: string, dto: UpdateStockDto): Promise<Stock> {
+  async updateStockProduct(
+    id: string,
+    dto: UpdateStockDto,
+    empleadoId?: string | null,
+  ): Promise<Stock> {
     //1.- primero validamos que el producto exista
     const producto = await this.productoRepo.findOne({ where: { id } });
     if (!producto) {
@@ -966,6 +1033,7 @@ export class ProductoService {
         sucursal_id: sucursalId == null ? IsNull() : sucursalId,
       },
     });
+    const antes = stock ? this.snapshotStock(stock) : null;
     if (!stock) {
       stock = this.stockRepo.create({
         producto,
@@ -975,8 +1043,32 @@ export class ProductoService {
         sucursal_id: sucursalId,
         cantidad: cantidad ?? 0,
         cantidad_minima: cantidadMinima ?? 0,
+        deposito: this.normalizeOptionalText(dto.deposito) ?? null,
+        pasillo: this.normalizeOptionalText(dto.pasillo) ?? null,
+        estante: this.normalizeOptionalText(dto.estante) ?? null,
+        sector: this.normalizeOptionalText(dto.sector) ?? null,
+        codigo_ubicacion: this.normalizeOptionalText(dto.codigo_ubicacion) ?? null,
+        ubicacion_referencia:
+          this.normalizeOptionalText(dto.ubicacion_referencia) ?? null,
       } as Partial<Stock>);
-      return this.stockRepo.save(stock);
+      const guardado = await this.stockRepo.save(stock);
+      await this.auditoriaService.registrar({
+        modulo: 'productos',
+        accion: 'ACTUALIZAR_STOCK_PRODUCTO',
+        entidad: 'producto',
+        entidad_id: id,
+        empleado_id: empleadoId ?? null,
+        sucursal_id: sucursalId,
+        descripcion: `Stock creado/actualizado para ${producto.nombre}`,
+        antes,
+        despues: this.snapshotStock(guardado),
+        metadata: {
+          producto_id: id,
+          variante_id: dto.variante_id ?? null,
+          operacion: 'CREAR_STOCK',
+        },
+      });
+      return guardado;
     }
 
     if (cantidad !== undefined) {
@@ -985,7 +1077,44 @@ export class ProductoService {
     if (cantidadMinima !== undefined) {
       stock.cantidad_minima = cantidadMinima;
     }
-    return this.stockRepo.save(stock);
+    if (dto.deposito !== undefined) {
+      stock.deposito = this.normalizeOptionalText(dto.deposito) ?? null;
+    }
+    if (dto.pasillo !== undefined) {
+      stock.pasillo = this.normalizeOptionalText(dto.pasillo) ?? null;
+    }
+    if (dto.estante !== undefined) {
+      stock.estante = this.normalizeOptionalText(dto.estante) ?? null;
+    }
+    if (dto.sector !== undefined) {
+      stock.sector = this.normalizeOptionalText(dto.sector) ?? null;
+    }
+    if (dto.codigo_ubicacion !== undefined) {
+      stock.codigo_ubicacion =
+        this.normalizeOptionalText(dto.codigo_ubicacion) ?? null;
+    }
+    if (dto.ubicacion_referencia !== undefined) {
+      stock.ubicacion_referencia =
+        this.normalizeOptionalText(dto.ubicacion_referencia) ?? null;
+    }
+    const guardado = await this.stockRepo.save(stock);
+    await this.auditoriaService.registrar({
+      modulo: 'productos',
+      accion: 'ACTUALIZAR_STOCK_PRODUCTO',
+      entidad: 'producto',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Stock actualizado para ${producto.nombre}`,
+      antes,
+      despues: this.snapshotStock(guardado),
+      metadata: {
+        producto_id: id,
+        variante_id: dto.variante_id ?? null,
+        campos_recibidos: Object.keys(dto),
+      },
+    });
+    return guardado;
   }
 
   async adjustStockProduct(
@@ -996,6 +1125,7 @@ export class ProductoService {
       sucursal_id?: string | null;
       variante_id?: string | null;
     },
+    empleadoId?: string | null,
   ): Promise<Stock> {
     const producto = await this.productoRepo.findOne({ where: { id } });
     if (!producto) {
@@ -1050,6 +1180,7 @@ export class ProductoService {
       throw new BadRequestException('El stock no puede quedar negativo');
     }
 
+    const antes = stock ? this.snapshotStock(stock) : null;
     if (!stock) {
       stock = this.stockRepo.create({
         producto,
@@ -1060,16 +1191,57 @@ export class ProductoService {
         cantidad: nuevaCantidad,
         cantidad_minima: 0,
       } as Partial<Stock>);
-      return this.stockRepo.save(stock);
+      const guardado = await this.stockRepo.save(stock);
+      await this.auditoriaService.registrar({
+        modulo: 'productos',
+        accion: 'AJUSTAR_STOCK_PRODUCTO',
+        entidad: 'producto',
+        entidad_id: id,
+        empleado_id: empleadoId ?? null,
+        sucursal_id: sucursalId,
+        descripcion: `Stock ${dto.operacion.toLowerCase()} para ${producto.nombre}`,
+        antes,
+        despues: this.snapshotStock(guardado),
+        metadata: {
+          producto_id: id,
+          variante_id: dto.variante_id ?? null,
+          operacion: dto.operacion,
+          cantidad_ajustada: cantidad,
+          cantidad_anterior: cantidadActual,
+          cantidad_nueva: nuevaCantidad,
+        },
+      });
+      return guardado;
     }
 
     stock.cantidad = nuevaCantidad;
-    return this.stockRepo.save(stock);
+    const guardado = await this.stockRepo.save(stock);
+    await this.auditoriaService.registrar({
+      modulo: 'productos',
+      accion: 'AJUSTAR_STOCK_PRODUCTO',
+      entidad: 'producto',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Stock ${dto.operacion.toLowerCase()} para ${producto.nombre}`,
+      antes,
+      despues: this.snapshotStock(guardado),
+      metadata: {
+        producto_id: id,
+        variante_id: dto.variante_id ?? null,
+        operacion: dto.operacion,
+        cantidad_ajustada: cantidad,
+        cantidad_anterior: cantidadActual,
+        cantidad_nueva: nuevaCantidad,
+      },
+    });
+    return guardado;
   }
   // Activar/desactivar producto en una sucursal específica
   async toggleSucursal(
     productoId: string,
     sucursalId: string,
+    empleadoId?: string | null,
   ): Promise<ProductoSucursal> {
     const registro = await this.productoSucursalRepo.findOne({
       where: { producto_id: productoId, sucursal_id: sucursalId },
@@ -1081,8 +1253,29 @@ export class ProductoService {
       );
     }
 
+    const antes = {
+      producto_id: registro.producto_id,
+      sucursal_id: registro.sucursal_id,
+      activo: registro.activo,
+    };
     registro.activo = !registro.activo;
-    return this.productoSucursalRepo.save(registro);
+    const guardado = await this.productoSucursalRepo.save(registro);
+    await this.auditoriaService.registrar({
+      modulo: 'productos',
+      accion: 'CAMBIAR_ESTADO_PRODUCTO_SUCURSAL',
+      entidad: 'producto',
+      entidad_id: productoId,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Producto ${guardado.activo ? 'activado' : 'desactivado'} en sucursal`,
+      antes,
+      despues: {
+        producto_id: guardado.producto_id,
+        sucursal_id: guardado.sucursal_id,
+        activo: guardado.activo,
+      },
+    });
+    return guardado;
   }
 
   // Consultar stock de otra sucursal
@@ -1112,5 +1305,109 @@ export class ProductoService {
       cantidad: stock?.cantidad ?? 0,
       precio: precio?.precio ?? null,
     };
+  }
+
+  private snapshotProducto(producto: Producto) {
+    return {
+      id: producto.id,
+      nombre: producto.nombre,
+      codigo_barras: producto.codigo_barras,
+      descripcion: producto.descripcion,
+      categoria_id: producto.categoria_id,
+      marca_id: producto.marca_id,
+      activo: producto.activo,
+      activo_pos: producto.activo_pos,
+      precio_costo: Number(producto.precio_costo ?? 0),
+      precio_base: Number(producto.precio_base ?? 0),
+      precio_venta: Number(producto.precio_venta ?? producto.precio_base ?? 0),
+      margen_ganancia: Number(producto.margen_ganancia ?? 0),
+      unidad_venta: producto.unidad_venta,
+      es_fraccionable: producto.es_fraccionable,
+      tiene_variantes: producto.tiene_variantes,
+      tiene_vencimiento: producto.tiene_vencimiento,
+      stock: (producto.stock ?? []).map((stock) => this.snapshotStock(stock)),
+      variantes: (producto.variantes ?? []).map((variante) => ({
+        id: variante.id,
+        sku: variante.sku,
+        activo: variante.activo,
+        precio_extra: Number(variante.precio_extra ?? 0),
+        atributos: (variante.atributos ?? []).map((atributo) => ({
+          id: atributo.id,
+          tipo: atributo.tipo,
+          valor: atributo.valor,
+        })),
+        stock: (variante.stock ?? []).map((stock) => this.snapshotStock(stock)),
+      })),
+      imagenes: (producto.imagenes ?? []).map((imagen) => ({
+        id: imagen.id,
+        url: imagen.url,
+        orden: imagen.orden,
+      })),
+      lotes: (producto.lotes ?? []).map((lote) => ({
+        id: lote.id,
+        numero_lote: lote.numero_lote,
+        cantidad: Number(lote.cantidad ?? 0),
+        fecha_vencimiento: lote.fecha_vencimiento,
+        sucursal_id: lote.sucursal_id,
+      })),
+    };
+  }
+
+  private snapshotStock(stock: Stock) {
+    return {
+      id: stock.id,
+      producto_id: stock.producto_id,
+      variante_id: stock.variante_id,
+      sucursal_id: stock.sucursal_id,
+      cantidad: Number(stock.cantidad ?? 0),
+      cantidad_minima: Number(stock.cantidad_minima ?? 0),
+      deposito: stock.deposito,
+      pasillo: stock.pasillo,
+      estante: stock.estante,
+      sector: stock.sector,
+      codigo_ubicacion: stock.codigo_ubicacion,
+      ubicacion_referencia: stock.ubicacion_referencia,
+    };
+  }
+
+  private stockTotal(producto: Producto): number {
+    const stockProducto = (producto.stock ?? []).reduce(
+      (total, stock) => total + Number(stock.cantidad ?? 0),
+      0,
+    );
+    const stockVariantes = (producto.variantes ?? []).reduce(
+      (total, variante) =>
+        total +
+        (variante.stock ?? []).reduce(
+          (subtotal, stock) => subtotal + Number(stock.cantidad ?? 0),
+          0,
+        ),
+      0,
+    );
+    return stockProducto + stockVariantes;
+  }
+
+  private cambiosSensiblesProducto(
+    antes: ReturnType<ProductoService['snapshotProducto']>,
+    despues: ReturnType<ProductoService['snapshotProducto']>,
+  ) {
+    const camposSensibles = [
+      'precio_costo',
+      'precio_venta',
+      'precio_base',
+      'margen_ganancia',
+      'activo',
+      'activo_pos',
+      'categoria_id',
+      'marca_id',
+    ] as const;
+
+    return camposSensibles
+      .filter((campo) => antes[campo] !== despues[campo])
+      .map((campo) => ({
+        campo,
+        antes: antes[campo],
+        despues: despues[campo],
+      }));
   }
 }

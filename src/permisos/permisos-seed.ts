@@ -218,6 +218,24 @@ export const permisosSeed: CrearPermisoDto[] = [
     descripcion: 'Permite configurar el flujo del punto de venta',
   },
   {
+    clave: 'config.email',
+    nombre: 'Configurar email',
+    modulo: 'admin',
+    descripcion: 'Permite configurar credenciales y envios por correo',
+  },
+  {
+    clave: 'mp.crear',
+    nombre: 'Configurar Mercado Pago',
+    modulo: 'mp',
+    descripcion: 'Permite guardar credenciales de Mercado Pago',
+  },
+  {
+    clave: 'mp.leer',
+    nombre: 'Ver estado de Mercado Pago',
+    modulo: 'mp',
+    descripcion: 'Permite probar y consultar la configuracion de Mercado Pago',
+  },
+  {
     clave: 'reportes.ver',
     nombre: 'Ver reportes',
     modulo: 'reportes',

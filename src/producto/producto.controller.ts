@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Request,
 } from '@nestjs/common';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import {
@@ -27,8 +28,13 @@ export class ProductoController {
   create(
     @Body() createProductoDto: CreateProductoDto,
     @SucursalActiva() sucursalActivaId: string,
+    @Request() req,
   ) {
-    return this.productoService.create(createProductoDto, sucursalActivaId);
+    return this.productoService.create(
+      createProductoDto,
+      sucursalActivaId,
+      req.user?.id,
+    );
   }
 
   @Get()
@@ -52,14 +58,25 @@ export class ProductoController {
   update(
     @Param('id') id: string,
     @Body() updateProductoDto: UpdateProductoDto,
+    @SucursalActiva() sucursalActivaId: string,
+    @Request() req,
   ) {
-    return this.productoService.update(id, updateProductoDto);
+    return this.productoService.update(
+      id,
+      updateProductoDto,
+      req.user?.id,
+      sucursalActivaId,
+    );
   }
 
   @Delete(':id')
   @RequierePermiso('productos.editar')
-  remove(@Param('id') id: string) {
-    return this.productoService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalActivaId: string,
+    @Request() req,
+  ) {
+    return this.productoService.remove(id, req.user?.id, sucursalActivaId);
   }
 
   // Activar/desactivar producto en una sucursal
@@ -68,8 +85,9 @@ export class ProductoController {
   toggleSucursal(
     @Param('id') id: string,
     @Param('sucursalId') sucursalId: string,
+    @Request() req,
   ) {
-    return this.productoService.toggleSucursal(id, sucursalId);
+    return this.productoService.toggleSucursal(id, sucursalId, req.user?.id);
   }
 
   // Consultar stock en otra sucursal
@@ -92,6 +110,7 @@ export class ProductoController {
   ajustarMovimientoStock(
     @Param('id') id: string,
     @SucursalActiva() sucursalActivaId: string,
+    @Request() req,
     @Body()
     ajustarStockDto: {
       cantidad: number | string;
@@ -103,7 +122,7 @@ export class ProductoController {
     return this.productoService.adjustStockProduct(id, {
       ...ajustarStockDto,
       sucursal_id: sucursalActivaId,
-    });
+    }, req.user?.id);
   }
 
   @Patch(':id/stock')
@@ -111,17 +130,24 @@ export class ProductoController {
   ajustarStock(
     @Param('id') id: string,
     @SucursalActiva() sucursalActivaId: string,
+    @Request() req,
     @Body()
     ajustarStockDto: {
       cantidad?: number;
       cantidad_minima?: number;
       sucursal_id?: string | null;
       variante_id?: string;
+      deposito?: string | null;
+      pasillo?: string | null;
+      estante?: string | null;
+      sector?: string | null;
+      codigo_ubicacion?: string | null;
+      ubicacion_referencia?: string | null;
     },
   ) {
     return this.productoService.updateStockProduct(id, {
       ...ajustarStockDto,
       sucursal_id: sucursalActivaId,
-    });
+    }, req.user?.id);
   }
 }

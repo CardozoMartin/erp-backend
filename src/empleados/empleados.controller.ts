@@ -7,7 +7,9 @@ import {
   Patch,
   Post,
   Query,
+  Request,
 } from '@nestjs/common';
+import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { CrearEmpleadoDto, AsignarRolesDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { EmpleadosService } from './empleados.service';
@@ -25,8 +27,12 @@ export class EmpleadosController {
   ) {}
 
   @Post()
-  create(@Body() createEmpleadoDto: CrearEmpleadoDto) {
-    return this.empleadosService.create(createEmpleadoDto);
+  create(
+    @Body() createEmpleadoDto: CrearEmpleadoDto,
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.empleadosService.create(createEmpleadoDto, req.user?.id, sucursalId);
   }
 
   @Get()
@@ -46,16 +52,20 @@ export class EmpleadosController {
   update(
     @Param('id') id: string,
     @Body() updateEmpleadoDto: UpdateEmpleadoDto,
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
   ) {
-    return this.empleadosService.update(id, updateEmpleadoDto);
+    return this.empleadosService.update(id, updateEmpleadoDto, req.user?.id, sucursalId);
   }
 
   @Patch(':id/roles')
   assignRoles(
     @Param('id') id: string,
     @Body() asignarRolesDto: AsignarRolesDto,
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
   ) {
-    return this.empleadosService.asignarRoles(id, asignarRolesDto);
+    return this.empleadosService.asignarRoles(id, asignarRolesDto, req.user?.id, sucursalId);
   }
 
   @Delete(':id')
@@ -65,11 +75,18 @@ export class EmpleadosController {
 
   // POST /empleados/:id/sucursales
   @Post(':id/sucursales')
-  asignarSucursal(@Param('id') id: string, @Body() dto: AsignarSucursalDto) {
+  asignarSucursal(
+    @Param('id') id: string,
+    @Body() dto: AsignarSucursalDto,
+    @Request() req,
+    @SucursalActiva() sucursalActivaId: string,
+  ) {
     return this.empleadoSucursalesService.asignar(
       id,
       dto.sucursalId,
       dto.esPrincipal,
+      req.user?.id,
+      sucursalActivaId,
     );
   }
 
@@ -81,13 +98,33 @@ export class EmpleadosController {
 
   // PATCH /empleados/:id/sucursales/principal
   @Patch(':id/sucursales/principal')
-  setPrincipal(@Param('id') id: string, @Body() dto: AsignarSucursalDto) {
-    return this.empleadoSucursalesService.setPrincipal(id, dto.sucursalId);
+  setPrincipal(
+    @Param('id') id: string,
+    @Body() dto: AsignarSucursalDto,
+    @Request() req,
+    @SucursalActiva() sucursalActivaId: string,
+  ) {
+    return this.empleadoSucursalesService.setPrincipal(
+      id,
+      dto.sucursalId,
+      req.user?.id,
+      sucursalActivaId,
+    );
   }
 
   // DELETE /empleados/:id/sucursales
   @Delete(':id/sucursales')
-  desasignar(@Param('id') id: string, @Body() dto: DesasignarSucursalDto) {
-    return this.empleadoSucursalesService.desasignar(id, dto.sucursalId);
+  desasignar(
+    @Param('id') id: string,
+    @Body() dto: DesasignarSucursalDto,
+    @Request() req,
+    @SucursalActiva() sucursalActivaId: string,
+  ) {
+    return this.empleadoSucursalesService.desasignar(
+      id,
+      dto.sucursalId,
+      req.user?.id,
+      sucursalActivaId,
+    );
   }
 }
