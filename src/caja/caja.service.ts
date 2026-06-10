@@ -8,6 +8,11 @@ import { DataSource, Repository } from 'typeorm';
 import { PagosModuleService } from 'src/pagos-module/pagos-module.service';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import {
+  Comprobante,
+  EstadoComprobante,
+} from 'src/comprobantes/entities/comprobante.entity';
+import { PagoPos, TipoPagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
+import {
   AbrirCajaDto,
   CerrarCajaDto,
   RegistrarMovimientoCajaDto,
@@ -25,6 +30,10 @@ export class CajaService {
     private readonly cajaRepo: Repository<Caja>,
     @InjectRepository(MovimientoCaja)
     private readonly movimientoRepo: Repository<MovimientoCaja>,
+    @InjectRepository(PagoPos)
+    private readonly pagoPosRepo: Repository<PagoPos>,
+    @InjectRepository(Comprobante)
+    private readonly comprobanteRepo: Repository<Comprobante>,
     private readonly pagosService: PagosModuleService,
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
@@ -211,6 +220,107 @@ export class CajaService {
       },
     });
     return guardado;
+  }
+
+  async confirmarPagoMercadoPago(datos: {
+    ventaId: string;
+    mpPaymentId: string;
+    monto: number;
+    medioPago: string;
+    sucursalId: string;
+  }): Promise<void> {
+    const pagoExistente = await this.pagoPosRepo.findOne({
+      where: { referencia: datos.mpPaymentId, tipo: TipoPagoPos.QR },
+    });
+    if (pagoExistente) return;
+
+    const cajaAbierta = await this.cajaRepo.findOne({
+      where: {
+        sucursal_id: datos.sucursalId,
+        estado: EstadoCaja.ABIERTA,
+      },
+      order: { fecha_apertura: 'DESC' },
+    });
+    if (!cajaAbierta) throw new BadRequestException('No hay caja abierta');
+
+    const comprobante = await this.comprobanteRepo.findOne({
+      where: { id: datos.ventaId, sucursal_id: datos.sucursalId },
+    });
+    if (!comprobante) {
+      throw new NotFoundException('Comprobante de venta no encontrado');
+    }
+
+    const mediosPago = await this.pagosService.findAll();
+    const medioPagoQr =
+      mediosPago.find(
+        (medio) => medio.nombre.toLowerCase() === 'mercadopago qr',
+      ) ??
+      mediosPago.find((medio) =>
+        medio.nombre.toLowerCase().includes('mercadopago'),
+      ) ??
+      null;
+
+    const monto = Number(datos.monto);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager.save(
+        this.movimientoRepo.create({
+          caja_id: cajaAbierta.id,
+          tipo: TipoMovimientoCaja.COBRO,
+          monto,
+          empleado_id: null,
+          comprobante_id: comprobante.id,
+          medio_pago_id: medioPagoQr?.id ?? null,
+          referencia: datos.mpPaymentId,
+          descripcion: `Pago Mercado Pago #${datos.mpPaymentId} (${datos.medioPago})`,
+        }),
+      );
+
+      await queryRunner.manager.save(
+        this.pagoPosRepo.create({
+          comprobante_id: comprobante.id,
+          tipo: TipoPagoPos.QR,
+          medio_pago_id: medioPagoQr?.id ?? null,
+          monto,
+          cuotas: null,
+          recargo_porcentaje: 0,
+          recargo_monto: 0,
+          referencia: datos.mpPaymentId,
+          caja_id: cajaAbierta.id,
+          empleado_id: null,
+        }),
+      );
+
+      comprobante.estado = EstadoComprobante.COBRADA;
+      comprobante.caja_id = cajaAbierta.id;
+      await queryRunner.manager.save(comprobante);
+
+      await queryRunner.commitTransaction();
+      await this.auditoriaService.registrar({
+        modulo: 'caja',
+        accion: 'CONFIRMAR_PAGO_MERCADO_PAGO',
+        entidad: 'comprobante',
+        entidad_id: comprobante.id,
+        empleado_id: null,
+        sucursal_id: datos.sucursalId,
+        descripcion: `Pago Mercado Pago confirmado #${datos.mpPaymentId}`,
+        despues: {
+          comprobante_id: comprobante.id,
+          caja_id: cajaAbierta.id,
+          mp_payment_id: datos.mpPaymentId,
+          medio_pago: datos.medioPago,
+          monto,
+        },
+      });
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async registrarEgreso(params: {

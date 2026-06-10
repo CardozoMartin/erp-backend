@@ -152,6 +152,30 @@ export class PosVentasService {
       : { venta: cobrada };
   }
 
+  async crearVentaQr(
+    sucursalId: string,
+    empleadoId: string,
+    dto: CrearVentaPosDto,
+  ): Promise<Comprobante> {
+    const venta = await this.comprobantesService.create(sucursalId, empleadoId, {
+      ...dto,
+      tipo: TipoComprobante.VENTA,
+      estado: EstadoComprobante.PENDIENTE_COBRO,
+      empleado_vendedor_id: dto.empleado_vendedor_id ?? empleadoId,
+    });
+    await this.auditoriaService.registrar({
+      modulo: 'pos',
+      accion: 'CREAR_VENTA_QR',
+      entidad: 'comprobante',
+      entidad_id: venta.id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion: `Venta QR creada ${venta.numero}`,
+      despues: { numero: venta.numero, total: venta.total, estado: venta.estado },
+    });
+    return venta;
+  }
+
   async ventaCuentaCorriente(
     sucursalId: string,
     empleadoId: string,

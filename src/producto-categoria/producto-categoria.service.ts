@@ -1,16 +1,12 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateCategoriaAtributoDto } from './dto/create-categoria-atributo.dto';
+import { ProductoCategoria } from './entities/producto-categoria.entity';
 import { CreateProductoCategoriaDto } from './dto/create-producto-categoria.dto';
-import { UpdateCategoriaAtributoDto } from './dto/update-categoria-atributo.dto';
 import { UpdateProductoCategoriaDto } from './dto/update-producto-categoria.dto';
 import { CategoriaAtributoDef } from './entities/categoria-atributoDef';
-import { ProductoCategoria } from './entities/producto-categoria.entity';
+import { CreateCategoriaAtributoDto } from './dto/create-categoria-atributo.dto';
+import { UpdateCategoriaAtributoDto } from './dto/update-categoria-atributo.dto';
 
 @Injectable()
 export class ProductoCategoriaService {
@@ -42,7 +38,7 @@ export class ProductoCategoriaService {
 
   async findAll() {
     return await this.categoriaRepository.find({
-      relations: ['padre', 'hijos', 'atributos'],
+      relations: ['padre', 'hijos'],
       order: { nombre: 'ASC' },
     });
   }
@@ -51,7 +47,7 @@ export class ProductoCategoriaService {
   async findAllActivas(page: number = 1, limit: number = 10) {
     const [categorias, total] = await this.categoriaRepository.findAndCount({
       where: { activo: true },
-      relations: ['padre', 'hijos', 'atributos'],
+      relations: ['padre', 'hijos'],
       order: { nombre: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -71,7 +67,7 @@ export class ProductoCategoriaService {
   async findOne(id: string) {
     const categoria = await this.categoriaRepository.findOne({
       where: { id },
-      relations: ['padre', 'hijos', 'atributos'],
+      relations: ['padre', 'hijos'],
     });
     if (!categoria) {
       throw new NotFoundException(`Categoría con ID ${id} no encontrada`);
@@ -118,23 +114,26 @@ export class ProductoCategoriaService {
     return await this.categoriaRepository.remove(categoria);
   }
 
-  // ─── Métodos para manejar atributos ───
   async addAtributo(
     categoriaId: string,
     createAtributoDto: CreateCategoriaAtributoDto,
   ) {
-    const categoria = await this.findOne(categoriaId);
-    if (!categoria) {
-      throw new NotFoundException(
-        `Categoría con ID ${categoriaId} no encontrada`,
-      );
-    }
-
-    const nuevoAtributo = this.atributoRepository.create({
-      ...createAtributoDto,
-      categoria,
+    await this.findOne(categoriaId);
+    const atributo = this.atributoRepository.create({
+      categoria_id: categoriaId,
+      nombre: createAtributoDto.nombre,
+      requerido: createAtributoDto.requerido ?? false,
+      orden: createAtributoDto.orden ?? 0,
     });
-    return await this.atributoRepository.save(nuevoAtributo);
+    return this.atributoRepository.save(atributo);
+  }
+
+  async getAtributosByCategoria(categoriaId: string) {
+    await this.findOne(categoriaId);
+    return this.atributoRepository.find({
+      where: { categoria_id: categoriaId },
+      order: { orden: 'ASC', nombre: 'ASC' },
+    });
   }
 
   async updateAtributo(
@@ -150,11 +149,11 @@ export class ProductoCategoriaService {
       );
     }
 
-    const atributoActualizado = this.atributoRepository.merge(
+    const actualizado = this.atributoRepository.merge(
       atributo,
       updateAtributoDto,
     );
-    return await this.atributoRepository.save(atributoActualizado);
+    return this.atributoRepository.save(actualizado);
   }
 
   async removeAtributo(atributoId: string) {
@@ -166,15 +165,6 @@ export class ProductoCategoriaService {
         `Atributo con ID ${atributoId} no encontrado`,
       );
     }
-    return await this.atributoRepository.remove(atributo);
-  }
-
-  async getAtributosByCategoria(categoriaId: string) {
-    await this.findOne(categoriaId); // Validar que la categoría existe
-
-    return await this.atributoRepository.find({
-      where: { categoria_id: categoriaId },
-      order: { orden: 'ASC' },
-    });
+    return this.atributoRepository.remove(atributo);
   }
 }

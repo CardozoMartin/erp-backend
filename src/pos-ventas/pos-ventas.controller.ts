@@ -44,6 +44,16 @@ export class PosVentasController {
     return this.posVentasService.ventaCompleta(sucursalId, req.user.id, dto);
   }
 
+  @Post('qr')
+  @RequierePermiso('ventas.crear', 'caja.cobrar')
+  crearVentaQr(
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: CrearVentaPosDto,
+  ) {
+    return this.posVentasService.crearVentaQr(sucursalId, req.user.id, dto);
+  }
+
   @Post('cuenta-corriente')
   @RequierePermiso('ventas.crear')
   ventaCuentaCorriente(
