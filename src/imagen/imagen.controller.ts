@@ -15,6 +15,7 @@ import { memoryStorage } from 'multer';
 import { ImagenService } from './imagen.service';
 import { CreateImagenDto } from './dto/create-imagen.dto';
 import { UpdateImagenDto } from './dto/update-imagen.dto';
+import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 
 // Configuración de Multer — memoria (sin guardar en disco)
 const multerConfig = {
@@ -43,6 +44,7 @@ export class ImagenController {
   @Post()
   @UseInterceptors(FileInterceptor('archivo', multerConfig))
   create(
+    @SucursalActiva() sucursalId: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: CreateImagenDto,
   ) {
@@ -57,7 +59,7 @@ export class ImagenController {
     );
     if (!file)
       throw new BadRequestException('El archivo de imagen es requerido');
-    return this.imagenService.create(dto, file);
+    return this.imagenService.create(dto, file, sucursalId);
   }
 
   // GET /imagenes
@@ -92,7 +94,7 @@ export class ImagenController {
 
   // DELETE /imagenes/:id — elimina de Cloudinary Y de la DB
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.imagenService.remove(id);
+  remove(@SucursalActiva() sucursalId: string, @Param('id') id: string) {
+    return this.imagenService.remove(id, sucursalId);
   }
 }

@@ -36,6 +36,9 @@ export class PedidoEnvioItemDto {
 }
 
 export class CrearPedidoEnvioDto {
+  @IsUUID()
+  caja_id!: string;
+
   @IsOptional()
   @IsUUID()
   cliente_id?: string;

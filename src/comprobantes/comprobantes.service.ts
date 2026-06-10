@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email.service';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { Cliente } from 'src/clientes/entities/cliente.entity';
 import { ListaPrecioService } from 'src/lista-precio/lista-precio.service';
 import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
 import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
@@ -18,6 +20,7 @@ import {
   CreateComprobanteItemDto,
 } from './dto/create-comprobante.dto';
 import { UpdateComprobanteDto } from './dto/update-comprobante.dto';
+import { EnviarComprobanteEmailDto } from './dto/enviar-comprobante-email.dto';
 import {
   Comprobante,
   EstadoComprobante,
@@ -41,7 +44,10 @@ export class ComprobantesService {
     private readonly stockRepo: Repository<Stock>,
     @InjectRepository(ProductoSucursal)
     private readonly productoSucursalRepo: Repository<ProductoSucursal>,
+    @InjectRepository(Cliente)
+    private readonly clienteRepo: Repository<Cliente>,
     private readonly configuracionService: ConfiguracionService,
+    private readonly configuracionEmailService: ConfiguracionEmailService,
     private readonly listaPrecioService: ListaPrecioService,
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
@@ -320,6 +326,47 @@ export class ComprobantesService {
     });
   }
 
+  async enviarPorEmail(
+    id: string,
+    sucursalId: string,
+    dto: EnviarComprobanteEmailDto,
+    empleadoId?: string | null,
+  ) {
+    const comprobante = await this.findOne(id, sucursalId);
+    const cliente = comprobante.cliente_id
+      ? await this.clienteRepo.findOne({ where: { id: comprobante.cliente_id } })
+      : null;
+    const destino = dto.destino.trim().toLowerCase();
+    const asunto =
+      dto.asunto?.trim() ||
+      `${comprobante.tipo.replaceAll('_', ' ')} ${comprobante.numero}`;
+    const text = this.buildComprobanteEmailText(comprobante, cliente, dto.mensaje);
+
+    await this.configuracionEmailService.enviarCorreoSucursal(sucursalId, {
+      to: destino,
+      subject: asunto,
+      text,
+    });
+
+    await this.auditoriaService.registrar({
+      modulo: 'comprobantes',
+      accion: 'ENVIAR_COMPROBANTE_EMAIL',
+      entidad: 'comprobante',
+      entidad_id: comprobante.id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId,
+      descripcion: `Comprobante ${comprobante.numero} enviado por email a ${destino}`,
+      metadata: {
+        destino,
+        tipo: comprobante.tipo,
+        numero: comprobante.numero,
+        total: Number(comprobante.total ?? 0),
+      },
+    });
+
+    return { ok: true, message: `Comprobante enviado a ${destino}` };
+  }
+
   private async generarNumero(
     sucursalId: string,
     tipo: TipoComprobante,
@@ -578,6 +625,54 @@ export class ComprobantesService {
 
   private round(value: number): number {
     return Number(Number(value).toFixed(2));
+  }
+
+  private buildComprobanteEmailText(
+    comprobante: Comprobante,
+    cliente: Cliente | null,
+    mensaje?: string | null,
+  ) {
+    const clienteNombre =
+      cliente?.razon_social ||
+      [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') ||
+      'Consumidor final';
+    const items = (comprobante.items ?? [])
+      .map((item) => {
+        const cantidad = Number(item.cantidad ?? 0);
+        const precio = this.formatCurrency(Number(item.precio_unitario ?? 0));
+        const subtotal = this.formatCurrency(Number(item.subtotal ?? 0));
+        return `- ${item.descripcion} | Cant.: ${cantidad} | Unit.: ${precio} | Subtotal: ${subtotal}`;
+      })
+      .join('\n');
+
+    return [
+      mensaje?.trim() || 'Te enviamos el detalle de tu comprobante.',
+      '',
+      `${comprobante.tipo.replaceAll('_', ' ')} ${comprobante.numero}`,
+      `Fecha: ${new Date(comprobante.created_at).toLocaleString('es-AR')}`,
+      `Cliente: ${clienteNombre}`,
+      '',
+      'Detalle:',
+      items || 'Sin items registrados.',
+      '',
+      `Subtotal: ${this.formatCurrency(Number(comprobante.subtotal ?? 0))}`,
+      `Descuentos: ${this.formatCurrency(Number(comprobante.descuento_total ?? 0))}`,
+      `Recargos: ${this.formatCurrency(Number(comprobante.recargo_total ?? 0))}`,
+      `Total: ${this.formatCurrency(Number(comprobante.total ?? 0))}`,
+      comprobante.observaciones ? `\nObservaciones: ${comprobante.observaciones}` : '',
+      '',
+      'Gracias por su compra.',
+    ]
+      .filter((line) => line !== null && line !== undefined)
+      .join('\n');
+  }
+
+  private formatCurrency(value: number) {
+    return value.toLocaleString('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      maximumFractionDigits: 2,
+    });
   }
 
   private snapshotComprobante(comprobante: Comprobante) {

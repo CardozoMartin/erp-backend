@@ -50,6 +50,8 @@ export class VentaCompletaPosDto extends CrearVentaPosDto {
   comprobante_fiscal?: EmitirFiscalPosDto;
 }
 
+export class VentaCuentaCorrientePosDto extends CrearVentaPosDto {}
+
 export class CancelarVentaPosDto {
   @IsOptional()
   @IsString()

@@ -184,6 +184,114 @@ export class PagosPosService {
     });
   }
 
+  async cobrarCuentaCorrienteSinCaja(
+    comprobanteId: string,
+    sucursalId: string,
+    empleadoId: string,
+  ): Promise<Comprobante> {
+    const comprobante = await this.comprobantesService.findOne(
+      comprobanteId,
+      sucursalId,
+    );
+    const antes = this.snapshotComprobanteCobro(comprobante);
+    this.validarComprobanteCobrable(comprobante);
+    if (!comprobante.cliente_id) {
+      throw new BadRequestException(
+        'Para cobrar por cuenta corriente el comprobante debe tener cliente',
+      );
+    }
+
+    const config = await this.configuracionService.crearPorDefecto(sucursalId);
+    if (!config.permitir_cuenta_corriente) {
+      throw new BadRequestException(
+        'La cuenta corriente no esta habilitada para esta sucursal',
+      );
+    }
+
+    const monto = this.round(Number(comprobante.total ?? 0));
+    if (monto <= 0) {
+      throw new BadRequestException('El total de la venta debe ser mayor a cero');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const pagoGuardado = this.pagoRepo.create({
+        comprobante_id: comprobante.id,
+        tipo: TipoPagoPos.CUENTA_CORRIENTE,
+        medio_pago_id: null,
+        monto,
+        cuotas: null,
+        recargo_porcentaje: 0,
+        recargo_monto: 0,
+        referencia: null,
+        caja_id: null,
+        empleado_id: empleadoId,
+      });
+      await queryRunner.manager.save(pagoGuardado);
+
+      await this.clientesService.registrarCargo(
+        comprobante.cliente_id,
+        monto,
+        `Comprobante ${comprobante.numero}`,
+        comprobante.id,
+        undefined,
+        empleadoId,
+        sucursalId,
+      );
+
+      if (config.descuento_stock === DescuentoStock.AL_COBRAR) {
+        await this.stockMovimientosService.descontarPorComprobante(
+          comprobante,
+          empleadoId,
+          queryRunner.manager,
+        );
+      }
+
+      comprobante.estado = EstadoComprobante.COBRADA;
+      comprobante.caja_id = null;
+      comprobante.empleado_cajero_id = empleadoId;
+      await queryRunner.manager.save(comprobante);
+
+      await queryRunner.commitTransaction();
+      const cobrado = await this.comprobantesService.findOne(comprobante.id, sucursalId);
+      await this.auditoriaService.registrar({
+        modulo: 'pos',
+        accion: 'COBRAR_COMPROBANTE_CUENTA_CORRIENTE',
+        entidad: 'comprobante',
+        entidad_id: comprobante.id,
+        empleado_id: empleadoId,
+        sucursal_id: sucursalId,
+        descripcion: `Comprobante cobrado por cuenta corriente ${comprobante.numero}`,
+        antes,
+        despues: this.snapshotComprobanteCobro(cobrado),
+        metadata: {
+          total_pagado: monto,
+          total_comprobante: Number(cobrado.total ?? 0),
+          pagos: [
+            {
+              tipo: TipoPagoPos.CUENTA_CORRIENTE,
+              medio_pago_id: null,
+              monto,
+              recargo_monto: 0,
+              referencia: null,
+              cuotas: null,
+            },
+          ],
+          descuento_stock: config.descuento_stock,
+        },
+      });
+      return cobrado;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   private validarComprobanteCobrable(comprobante: Comprobante): void {
     if (
       ![

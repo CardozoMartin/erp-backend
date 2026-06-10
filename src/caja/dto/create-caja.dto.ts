@@ -1,5 +1,6 @@
 import {
   IsEnum,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -8,6 +9,7 @@ import {
 } from 'class-validator';
 import { TipoMovimientoCaja } from '../entities/movimiento-caja.entity';
 import { CategoriaMovimientoCaja } from '../entities/movimiento-caja.entity';
+import { EstadoCaja } from '../entities/caja.entity';
 
 export class AbrirCajaDto {
   @IsOptional()
@@ -57,4 +59,18 @@ export class CerrarCajaDto {
   @IsOptional()
   @IsString()
   descripcion?: string;
+}
+
+export class CajaQueryDto {
+  @IsOptional()
+  @IsDateString()
+  desde?: string;
+
+  @IsOptional()
+  @IsDateString()
+  hasta?: string;
+
+  @IsOptional()
+  @IsEnum(EstadoCaja)
+  estado?: EstadoCaja;
 }

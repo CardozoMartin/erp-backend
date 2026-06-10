@@ -29,6 +29,15 @@ export class PedidosEnvioController {
     return this.pedidosEnvioService.findAll(sucursalId);
   }
 
+  @Get('caja/:cajaId')
+  @RequierePermiso('caja.ver')
+  findByCaja(
+    @Param('cajaId') cajaId: string,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.pedidosEnvioService.findByCaja(cajaId, sucursalId);
+  }
+
   @Get(':id')
   @RequierePermiso('ventas.ver')
   findOne(@Param('id') id: string, @SucursalActiva() sucursalId: string) {

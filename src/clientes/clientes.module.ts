@@ -7,6 +7,8 @@ import { CuentaCorriente } from './entities/cuenta-corriente.entity';
 import { MovimientoCuentaCorriente } from './entities/movimiento-cuenta-corriente.entity';
 import { PlanPago } from './entities/plan-pago.entity';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
+import { CajaModule } from 'src/caja/caja.module';
+import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { AuditoriaModule } from 'src/auditoria/auditoria.module';
       PlanPago,
     ]),
     AuditoriaModule,
+    CajaModule,
+    ConfiguracionModule,
   ],
   controllers: [ClientesController],
   providers: [ClientesService],

@@ -21,6 +21,7 @@ import {
   RegistrarNotaCreditoCuentaDto,
   RegistrarPagoCuentaDto,
 } from './dto/cuenta-corriente-operacion.dto';
+import { EnviarResumenCuentaDto } from './dto/enviar-resumen-cuenta.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { SucursalGuard } from 'src/sucursal/decorators/sucursal.guard';
@@ -74,6 +75,16 @@ export class ClientesController {
   @Get(':id/movimientos')
   getMovimientos(@Param('id') id: string) {
     return this.service.getMovimientos(id);
+  }
+
+  @Post(':id/cuenta-corriente/enviar-resumen')
+  enviarResumenCuenta(
+    @Param('id') id: string,
+    @Body() dto: EnviarResumenCuentaDto,
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.service.enviarResumenCuentaCorriente(id, dto, req.user?.id, sucursalId);
   }
 
   @Post(':id/cargo')

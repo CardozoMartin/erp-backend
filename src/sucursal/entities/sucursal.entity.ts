@@ -78,7 +78,7 @@ export class Sucursal {
   inicioActividades!: string | null;
 
   // ── DATOS PARA TICKET ─────────────────────────────
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'text', nullable: true })
   logoUrl!: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
