@@ -333,7 +333,7 @@ export class AppSeedService {
       rol.nombre === 'Admin'
         ? {
             ...rol,
-            rutaInicio: '/',
+            rutaInicio: '/ajustes',
             permisosClaves: permisosSeed.map((permiso) => permiso.clave),
           }
         : rol,

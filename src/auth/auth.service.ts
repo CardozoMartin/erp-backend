@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { EmpleadoSucursal } from 'src/empleados/entities/empleado-sucursal.entity';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { frontRoutes } from './front-routes';
 
 @Injectable()
 export class AuthService {
@@ -24,13 +25,43 @@ export class AuthService {
   ) {}
 
   private calcularPermisos(empleado: Empleado): string[] {
-    return [
-      ...new Set(
-        empleado.empleadoRoles
-          ?.filter((er) => er.activo)
-          .flatMap((er) => er.rol.permisos.map((p) => p.clave)) ?? [],
-      ),
-    ];
+    const permisos = new Set(
+      empleado.empleadoRoles
+        ?.filter((er) => er.activo)
+        .flatMap((er) => er.rol.permisos.map((p) => p.clave)) ?? [],
+    );
+
+    empleado.permisosExtra
+      ?.filter((extra) => extra.tipo === 'grant')
+      .forEach((extra) => permisos.add(extra.permiso.clave));
+
+    empleado.permisosExtra
+      ?.filter((extra) => extra.tipo === 'revoke')
+      .forEach((extra) => permisos.delete(extra.permiso.clave));
+
+    return [...permisos];
+  }
+
+  private calcularRutasPermitidas(permisos: string[]) {
+    const permisosSet = new Set(permisos);
+    return frontRoutes
+      .filter((route) =>
+        route.requiredAny.some((permiso) => permisosSet.has(permiso)),
+      )
+      .map(({ path, label }) => ({ path, label }));
+  }
+
+  private resolverRutaInicio(
+    empleado: Empleado,
+    rutas: Array<{ path: string; label: string }>,
+  ) {
+    const rutasSet = new Set(rutas.map((ruta) => ruta.path));
+    const rutaRol = empleado.empleadoRoles
+      ?.filter((er) => er.activo)
+      .map((er) => er.rol.rutaInicio)
+      .find((ruta) => rutasSet.has(ruta));
+
+    return rutaRol ?? rutas[0]?.path ?? '/sin-acceso';
   }
 
   private resolverSucursalActiva(
@@ -65,19 +96,7 @@ export class AuthService {
 
     const permisos = this.calcularPermisos(empleado);
 
-    const rutas = [
-      ...new Map(
-        empleado.empleadoRoles
-          .filter((er) => er.activo)
-          .map((er) => [
-            er.rol.rutaInicio,
-            {
-              path: er.rol.rutaInicio,
-              label: er.rol.nombre,
-            },
-          ]),
-      ).values(),
-    ];
+    const rutas = this.calcularRutasPermitidas(permisos);
 
     const sucursales = empleado.sucursales
       .filter((es) => es.activo)
@@ -88,9 +107,7 @@ export class AuthService {
       }));
     const sucursalId = this.resolverSucursalActiva(empleado.sucursales);
 
-    const rutaInicio =
-      empleado.empleadoRoles.filter((er) => er.activo)[0]?.rol.rutaInicio ??
-      '/sin-acceso';
+    const rutaInicio = this.resolverRutaInicio(empleado, rutas);
 
     const payload = {
       sub: empleado.id,
@@ -177,11 +194,15 @@ export class AuthService {
         'empleadoRoles',
         'empleadoRoles.rol',
         'empleadoRoles.rol.permisos',
+        'permisosExtra',
+        'permisosExtra.permiso',
       ],
     });
     if (!empleado) throw new UnauthorizedException('Empleado no encontrado');
 
     const permisos = this.calcularPermisos(empleado);
+    const rutas = this.calcularRutasPermitidas(permisos);
+    const rutaInicio = this.resolverRutaInicio(empleado, rutas);
 
     const payload = {
       sub: empleado.id,
@@ -196,6 +217,9 @@ export class AuthService {
         id: asignacion.sucursal.id,
         nombre: asignacion.sucursal.nombre,
       },
+      permisos,
+      rutas,
+      rutaInicio,
     };
   }
 

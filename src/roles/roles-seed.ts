@@ -9,7 +9,7 @@ export const rolesSeed: RoleSeed[] = [
   {
     nombre: 'Vendedor',
     descripcion: 'Puede crear y gestionar ventas',
-    rutaInicio: '/pos/ventas',
+    rutaInicio: '/punto-venta',
     permisosClaves: [
       'ventas.crear',
       'ventas.cancelar',
@@ -23,7 +23,7 @@ export const rolesSeed: RoleSeed[] = [
   {
     nombre: 'Cajero',
     descripcion: 'Puede cobrar ventas y manejar caja',
-    rutaInicio: '/pos/caja',
+    rutaInicio: '/caja',
     permisosClaves: [
       'ventas.ver',
       'caja.cobrar',
@@ -39,7 +39,7 @@ export const rolesSeed: RoleSeed[] = [
   {
     nombre: 'Vendedor Cajero',
     descripcion: 'Puede vender y cobrar',
-    rutaInicio: '/pos/ventas',
+    rutaInicio: '/punto-venta',
     permisosClaves: [
       'ventas.crear',
       'ventas.cancelar',
@@ -72,7 +72,7 @@ export const rolesSeed: RoleSeed[] = [
   {
     nombre: 'Gerente',
     descripcion: 'Acceso completo excepto configuracion del sistema',
-    rutaInicio: '/pos/reportes',
+    rutaInicio: '/reportes-pos',
     permisosClaves: [
       'ventas.crear',
       'ventas.cancelar',
@@ -98,7 +98,7 @@ export const rolesSeed: RoleSeed[] = [
   {
     nombre: 'Admin',
     descripcion: 'Acceso total al sistema',
-    rutaInicio: '/admin',
+    rutaInicio: '/ajustes',
     permisosClaves: [
       'ventas.crear',
       'ventas.cancelar',

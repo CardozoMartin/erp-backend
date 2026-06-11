@@ -21,7 +21,7 @@ export class Role {
   descripcion!: string | null;
 
   @Column({ type: 'varchar', length: 50 })
-  rutaInicio!: string; // '/punto-de-venta', '/caja', '/deposito', '/admin'
+  rutaInicio!: string;
 
   @Column({ type: 'boolean', default: true })
   activo!: boolean;
