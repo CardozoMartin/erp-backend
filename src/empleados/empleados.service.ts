@@ -22,6 +22,8 @@ import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 import { EmpleadoRol } from './entities/empleado-rol.entity';
 import { Empleado } from './entities/empleado.entity';
+import { EmpleadoPermiso } from './entities/empleado-permiso.entity';
+import { AsignarPermisoDto, RemoverPermisoDto } from './dto/empleado-permiso.dto';
 
 @Injectable()
 export class EmpleadosService {
@@ -30,6 +32,8 @@ export class EmpleadosService {
     private readonly empleadosRepo: Repository<Empleado>,
     @InjectRepository(EmpleadoRol)
     private readonly empleadoRolRepo: Repository<EmpleadoRol>,
+    @InjectRepository(EmpleadoPermiso)
+    private readonly empleadoPermisoRepo: Repository<EmpleadoPermiso>,
     @InjectRepository(Comprobante)
     private readonly comprobanteRepo: Repository<Comprobante>,
     private readonly rolesService: RolesService,
@@ -243,6 +247,105 @@ export class EmpleadosService {
     return respuesta;
   }
 
+  async asignarPermisoExtra(
+    id: string,
+    dto: AsignarPermisoDto,
+    actorId?: string | null,
+    sucursalActivaId?: string | null,
+  ): Promise<RespuestaEmpleadoDto> {
+    const empleado = await this.cargarEmpleadoCompleto(id);
+    if (!empleado) throw new NotFoundException(`Empleado ${id} no encontrado`);
+    const antes = this.buildRespuesta(empleado);
+
+    if (!sucursalActivaId) {
+      throw new ConflictException('Se requiere una sucursal activa para asignar permisos específicos');
+    }
+
+    const permisoExistente = await this.empleadoPermisoRepo.findOne({
+      where: {
+        empleado: { id },
+        permiso: { id: dto.permisoId },
+        sucursal: { id: sucursalActivaId },
+      },
+    });
+
+    if (permisoExistente) {
+      permisoExistente.tipo = dto.tipo;
+      await this.empleadoPermisoRepo.save(permisoExistente);
+    } else {
+      const nuevoPermiso = this.empleadoPermisoRepo.create({
+        empleado: { id },
+        permiso: { id: dto.permisoId } as any,
+        sucursal: { id: sucursalActivaId } as any,
+        tipo: dto.tipo,
+      });
+      await this.empleadoPermisoRepo.save(nuevoPermiso);
+    }
+
+    const empleadoActualizado = await this.cargarEmpleadoCompleto(id);
+    const ventasMes = await this.calcularVentasEmpleadoMesActual(id);
+    const respuesta = this.buildRespuesta(empleadoActualizado, ventasMes);
+
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'ASIGNAR_PERMISO_EXTRA',
+      entidad: 'empleado',
+      entidad_id: id,
+      empleado_id: actorId ?? null,
+      sucursal_id: sucursalActivaId ?? null,
+      descripcion: `Se asignó el permiso ${dto.permisoId} (${dto.tipo}) a ${respuesta.nombreCompleto}`,
+      antes: antes as any,
+      despues: respuesta as any,
+    });
+
+    return respuesta;
+  }
+
+  async removerPermisoExtra(
+    id: string,
+    permisoId: string,
+    actorId?: string | null,
+    sucursalActivaId?: string | null,
+  ): Promise<RespuestaEmpleadoDto> {
+    const empleado = await this.cargarEmpleadoCompleto(id);
+    if (!empleado) throw new NotFoundException(`Empleado ${id} no encontrado`);
+    const antes = this.buildRespuesta(empleado);
+
+    if (!sucursalActivaId) {
+      throw new ConflictException('Se requiere una sucursal activa para remover permisos específicos');
+    }
+
+    const permisoExistente = await this.empleadoPermisoRepo.findOne({
+      where: {
+        empleado: { id },
+        permiso: { id: permisoId },
+        sucursal: { id: sucursalActivaId },
+      },
+    });
+
+    if (permisoExistente) {
+      await this.empleadoPermisoRepo.remove(permisoExistente);
+    }
+
+    const empleadoActualizado = await this.cargarEmpleadoCompleto(id);
+    const ventasMes = await this.calcularVentasEmpleadoMesActual(id);
+    const respuesta = this.buildRespuesta(empleadoActualizado, ventasMes);
+
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'REMOVER_PERMISO_EXTRA',
+      entidad: 'empleado',
+      entidad_id: id,
+      empleado_id: actorId ?? null,
+      sucursal_id: sucursalActivaId ?? null,
+      descripcion: `Se removió el permiso ${permisoId} a ${respuesta.nombreCompleto}`,
+      antes: antes as any,
+      despues: respuesta as any,
+    });
+
+    return respuesta;
+  }
+
   //Helpers
   private buildRespuesta(empleado: Empleado, ventasMesActual = 0): RespuestaEmpleadoDto {
     const roles = empleado.empleadoRoles.map((er) => ({
@@ -251,13 +354,32 @@ export class EmpleadosService {
       rutaInicio: er.rol.rutaInicio,
     }));
 
-    const permisos = [
-      ...new Set(
-        empleado.empleadoRoles.flatMap((er) =>
-          er.rol.permisos.map((p) => p.clave),
-        ),
+    const permisosSet = new Set(
+      empleado.empleadoRoles.flatMap((er) =>
+        er.rol.permisos.map((p) => p.clave),
       ),
-    ];
+    );
+
+    empleado.permisosExtra
+      ?.filter((extra) => extra.tipo === 'grant')
+      .forEach((extra) => permisosSet.add(extra.permiso.clave));
+
+    empleado.permisosExtra
+      ?.filter((extra) => extra.tipo === 'revoke')
+      .forEach((extra) => permisosSet.delete(extra.permiso.clave));
+
+    const permisos = [...permisosSet];
+
+    const permisosExtra = empleado.permisosExtra?.map(pe => ({
+      permiso: {
+        id: pe.permiso.id,
+        clave: pe.permiso.clave,
+        nombre: pe.permiso.nombre,
+        modulo: pe.permiso.modulo,
+      },
+      tipo: pe.tipo,
+      sucursalId: pe.sucursal.id,
+    })) ?? [];
 
     // ← NUEVO
     const sucursales =
@@ -289,6 +411,7 @@ export class EmpleadosService {
       bono_ventas_corresponde: bonoActivo && metaMensual > 0 && ventasMesActual >= metaMensual,
       roles,
       permisos,
+      permisosExtra,
       sucursales, // ← nuevo
     };
   }
@@ -338,6 +461,9 @@ export class EmpleadosService {
         'empleadoRoles.rol.permisos',
         'sucursales', // ← nuevo
         'sucursales.sucursal', // ← nuevo
+        'permisosExtra',
+        'permisosExtra.permiso',
+        'permisosExtra.sucursal',
       ],
     });
     if (!empleado) throw new NotFoundException(`Empleado ${id} no encontrado`);

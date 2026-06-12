@@ -19,6 +19,7 @@ import {
 } from './dto/empleado-sucursal.dto';
 import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
+import { AsignarPermisoDto } from './dto/empleado-permiso.dto';
 
 @Controller('empleados')
 export class EmpleadosController {
@@ -148,6 +149,40 @@ export class EmpleadosController {
     return this.empleadoSucursalesService.desasignar(
       id,
       dto.sucursalId,
+      req.user?.id,
+      sucursalActivaId,
+    );
+  }
+
+  // POST /empleados/:id/permisos
+  @Post(':id/permisos')
+  @RequierePermiso('empleados.permisos')
+  asignarPermiso(
+    @Param('id') id: string,
+    @Body() dto: AsignarPermisoDto,
+    @Request() req,
+    @SucursalActiva() sucursalActivaId: string,
+  ) {
+    return this.empleadosService.asignarPermisoExtra(
+      id,
+      dto,
+      req.user?.id,
+      sucursalActivaId,
+    );
+  }
+
+  // DELETE /empleados/:id/permisos/:permisoId
+  @Delete(':id/permisos/:permisoId')
+  @RequierePermiso('empleados.permisos')
+  removerPermiso(
+    @Param('id') id: string,
+    @Param('permisoId') permisoId: string,
+    @Request() req,
+    @SucursalActiva() sucursalActivaId: string,
+  ) {
+    return this.empleadosService.removerPermisoExtra(
+      id,
+      permisoId,
       req.user?.id,
       sucursalActivaId,
     );

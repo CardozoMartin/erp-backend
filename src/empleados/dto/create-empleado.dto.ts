@@ -99,6 +99,11 @@ export class RespuestaEmpleadoDto {
   bono_ventas_corresponde!: boolean;
   roles!: { id: string; nombre: string; rutaInicio: string }[];
   permisos!: string[]; // ['ventas.crear', 'caja.cobrar', ...]
+  permisosExtra?: {
+    permiso: { id: string; clave: string; nombre: string; modulo: string };
+    tipo: 'grant' | 'revoke';
+    sucursalId: string;
+  }[];
   sucursales!: {
     id: string;
     nombre: string;
