@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Request,
+} from '@nestjs/common';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
@@ -44,16 +53,13 @@ export class CajaController {
     @Query() query: CajaQueryDto,
   ) {
     const puedeVerTodas = this.puedeVerTodasLasCajas(req);
-    return this.cajaService.findAll(
-      sucursalId,
-      {
-        empleadoId: puedeVerTodas ? undefined : req.user.id,
-        soloAbiertas: !puedeVerTodas,
-        desde: puedeVerTodas ? query.desde : undefined,
-        hasta: puedeVerTodas ? query.hasta : undefined,
-        estado: puedeVerTodas ? query.estado : undefined,
-      },
-    );
+    return this.cajaService.findAll(sucursalId, {
+      empleadoId: puedeVerTodas ? undefined : req.user.id,
+      soloAbiertas: !puedeVerTodas,
+      desde: puedeVerTodas ? query.desde : undefined,
+      hasta: puedeVerTodas ? query.hasta : undefined,
+      estado: puedeVerTodas ? query.estado : undefined,
+    });
   }
 
   @Get(':id/resumen')

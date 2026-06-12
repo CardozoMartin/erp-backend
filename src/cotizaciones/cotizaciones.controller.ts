@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Request } from '@nestjs/common';
+import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
   CambiarEstadoCotizacionDto,
@@ -12,6 +13,7 @@ export class CotizacionesController {
   constructor(private readonly cotizacionesService: CotizacionesService) {}
 
   @Post()
+  @RequierePermiso('ventas.cotizacion')
   create(
     @SucursalActiva() sucursalId: string,
     @Request() req,
@@ -21,16 +23,19 @@ export class CotizacionesController {
   }
 
   @Get()
+  @RequierePermiso('ventas.cotizacion')
   findAll(@SucursalActiva() sucursalId: string) {
     return this.cotizacionesService.findAll(sucursalId);
   }
 
   @Get(':id')
+  @RequierePermiso('ventas.cotizacion')
   findOne(@Param('id') id: string, @SucursalActiva() sucursalId: string) {
     return this.cotizacionesService.findOne(id, sucursalId);
   }
 
   @Patch(':id/enviar')
+  @RequierePermiso('ventas.cotizacion')
   enviar(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
@@ -40,6 +45,7 @@ export class CotizacionesController {
   }
 
   @Patch(':id/aceptar')
+  @RequierePermiso('ventas.cotizacion')
   aceptar(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
@@ -49,6 +55,7 @@ export class CotizacionesController {
   }
 
   @Patch(':id/rechazar')
+  @RequierePermiso('ventas.cotizacion')
   rechazar(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
@@ -58,6 +65,7 @@ export class CotizacionesController {
   }
 
   @Patch(':id/convertir-venta')
+  @RequierePermiso('ventas.cotizacion.convertir')
   convertirVenta(
     @Param('id') id: string,
     @SucursalActiva() sucursalId: string,
@@ -73,6 +81,7 @@ export class CotizacionesController {
   }
 
   @Post('vencer-expiradas')
+  @RequierePermiso('ventas.cotizacion')
   vencerExpiradas(@SucursalActiva() sucursalId: string) {
     return this.cotizacionesService.vencerExpiradas(sucursalId);
   }

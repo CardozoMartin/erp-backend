@@ -18,6 +18,7 @@ import {
   DesasignarSucursalDto,
 } from './dto/empleado-sucursal.dto';
 import { EmpleadoSucursalesService } from './empleado-sucursales.service';
+import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 
 @Controller('empleados')
 export class EmpleadosController {
@@ -27,15 +28,21 @@ export class EmpleadosController {
   ) {}
 
   @Post()
+  @RequierePermiso('empleados.crear')
   create(
     @Body() createEmpleadoDto: CrearEmpleadoDto,
     @Request() req,
     @SucursalActiva() sucursalId: string,
   ) {
-    return this.empleadosService.create(createEmpleadoDto, req.user?.id, sucursalId);
+    return this.empleadosService.create(
+      createEmpleadoDto,
+      req.user?.id,
+      sucursalId,
+    );
   }
 
   @Get()
+  @RequierePermiso('empleados.ver')
   findAll(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '30',
@@ -44,37 +51,52 @@ export class EmpleadosController {
   }
 
   @Get(':id')
+  @RequierePermiso('empleados.ver')
   findOne(@Param('id') id: string) {
     return this.empleadosService.findOne(id);
   }
 
   @Patch(':id')
+  @RequierePermiso('empleados.editar')
   update(
     @Param('id') id: string,
     @Body() updateEmpleadoDto: UpdateEmpleadoDto,
     @Request() req,
     @SucursalActiva() sucursalId: string,
   ) {
-    return this.empleadosService.update(id, updateEmpleadoDto, req.user?.id, sucursalId);
+    return this.empleadosService.update(
+      id,
+      updateEmpleadoDto,
+      req.user?.id,
+      sucursalId,
+    );
   }
 
   @Patch(':id/roles')
+  @RequierePermiso('empleados.roles')
   assignRoles(
     @Param('id') id: string,
     @Body() asignarRolesDto: AsignarRolesDto,
     @Request() req,
     @SucursalActiva() sucursalId: string,
   ) {
-    return this.empleadosService.asignarRoles(id, asignarRolesDto, req.user?.id, sucursalId);
+    return this.empleadosService.asignarRoles(
+      id,
+      asignarRolesDto,
+      req.user?.id,
+      sucursalId,
+    );
   }
 
   @Delete(':id')
+  @RequierePermiso('empleados.eliminar')
   remove(@Param('id') id: string) {
     return this.empleadosService.remove(id);
   }
 
   // POST /empleados/:id/sucursales
   @Post(':id/sucursales')
+  @RequierePermiso('empleados.editar')
   asignarSucursal(
     @Param('id') id: string,
     @Body() dto: AsignarSucursalDto,
@@ -92,12 +114,14 @@ export class EmpleadosController {
 
   // GET /empleados/:id/sucursales
   @Get(':id/sucursales')
+  @RequierePermiso('empleados.ver')
   getSucursales(@Param('id') id: string) {
     return this.empleadoSucursalesService.findByEmpleado(id);
   }
 
   // PATCH /empleados/:id/sucursales/principal
   @Patch(':id/sucursales/principal')
+  @RequierePermiso('empleados.editar')
   setPrincipal(
     @Param('id') id: string,
     @Body() dto: AsignarSucursalDto,
@@ -114,6 +138,7 @@ export class EmpleadosController {
 
   // DELETE /empleados/:id/sucursales
   @Delete(':id/sucursales')
+  @RequierePermiso('empleados.editar')
   desasignar(
     @Param('id') id: string,
     @Body() dto: DesasignarSucursalDto,

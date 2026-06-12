@@ -23,6 +23,7 @@ import {
 } from './dto/cuenta-corriente-operacion.dto';
 import { EnviarResumenCuentaDto } from './dto/enviar-resumen-cuenta.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { SucursalGuard } from 'src/sucursal/decorators/sucursal.guard';
 
@@ -32,31 +33,37 @@ export class ClientesController {
   constructor(private readonly service: ClientesService) {}
 
   @Post()
+  @RequierePermiso('clientes.cargar')
   create(@Body() dto: CreateClienteDto, @Request() req, @SucursalActiva() sucursalId: string) {
     return this.service.create(dto, req.user?.id, sucursalId);
   }
 
   @Get()
+  @RequierePermiso('clientes.ver')
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
+  @RequierePermiso('clientes.ver')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
   @Patch(':id')
+  @RequierePermiso('clientes.editar')
   update(@Param('id') id: string, @Body() dto: UpdateClienteDto, @Request() req, @SucursalActiva() sucursalId: string) {
     return this.service.update(id, dto, req.user?.id, sucursalId);
   }
 
   @Delete(':id')
+  @RequierePermiso('clientes.eliminar')
   remove(@Param('id') id: string, @Request() req, @SucursalActiva() sucursalId: string) {
     return this.service.remove(id, req.user?.id, sucursalId);
   }
 
   @Post(':id/cuenta-corriente')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   activarCuentaCorriente(
     @Param('id') id: string,
     @Body() body: { limite_credito: number; planPago?: CreatePlanPagoDto },
@@ -73,11 +80,13 @@ export class ClientesController {
   }
 
   @Get(':id/movimientos')
+  @RequierePermiso('clientes.cuenta_corriente.ver')
   getMovimientos(@Param('id') id: string) {
     return this.service.getMovimientos(id);
   }
 
   @Post(':id/cuenta-corriente/enviar-resumen')
+  @RequierePermiso('clientes.enviar_email')
   enviarResumenCuenta(
     @Param('id') id: string,
     @Body() dto: EnviarResumenCuentaDto,
@@ -88,6 +97,7 @@ export class ClientesController {
   }
 
   @Post(':id/cargo')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   registrarCargo(
     @Param('id') id: string,
     @Body() dto: RegistrarCargoCuentaDto,
@@ -98,6 +108,7 @@ export class ClientesController {
   }
 
   @Post(':id/pago')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   registrarPago(
     @Param('id') id: string,
     @Body() dto: RegistrarPagoCuentaDto,
@@ -108,6 +119,7 @@ export class ClientesController {
   }
 
   @Post(':id/nota-credito')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   registrarNotaCredito(
     @Param('id') id: string,
     @Body() dto: RegistrarNotaCreditoCuentaDto,
@@ -118,6 +130,7 @@ export class ClientesController {
   }
 
   @Post(':id/ajuste')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   registrarAjuste(
     @Param('id') id: string,
     @Body() dto: RegistrarAjusteCuentaDto,
@@ -128,6 +141,7 @@ export class ClientesController {
   }
 
   @Post(':id/recargos')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   calcularRecargos(
     @Param('id') id: string,
     @Body() dto: CalcularRecargosCuentaDto,
@@ -138,6 +152,7 @@ export class ClientesController {
   }
 
   @Patch('movimientos/:movimientoId/omitir-recargo')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
   omitirRecargo(
     @Param('movimientoId') movimientoId: string,
     @Request() req,

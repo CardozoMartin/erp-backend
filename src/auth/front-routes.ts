@@ -178,27 +178,27 @@ export const frontRoutes: FrontRouteDefinition[] = [
   {
     path: '/ajustes',
     label: 'Ajustes',
-    requiredAny: ['config.pos', 'mp.crear', 'mp.leer', 'config.email', 'reportes.ver'],
+    requiredAny: ['admin.servicios', 'config.pos', 'mp.crear', 'mp.leer', 'config.email', 'reportes.ver'],
   },
   {
     path: '/configuracion-pos',
     label: 'Configuracion POS',
-    requiredAny: ['config.pos'],
+    requiredAny: ['admin.servicios', 'config.pos'],
   },
   {
     path: '/configuracion-email',
     label: 'Configuracion Email',
-    requiredAny: ['config.email'],
+    requiredAny: ['admin.servicios', 'config.email'],
   },
   {
     path: '/configuracion-cloudinary',
     label: 'Configuracion Cloudinary',
-    requiredAny: ['config.pos'],
+    requiredAny: ['admin.servicios', 'config.pos'],
   },
   {
     path: '/configuracion-mercadopago',
     label: 'Mercado Pago',
-    requiredAny: ['mp.crear', 'mp.leer', 'config.pos'],
+    requiredAny: ['admin.servicios', 'mp.crear', 'mp.leer', 'config.pos'],
   },
   {
     path: '/auditoria',
