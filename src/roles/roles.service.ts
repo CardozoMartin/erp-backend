@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PermisosService } from 'src/permisos/permisos.service';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
@@ -7,6 +7,7 @@ import { CrearRoleDto } from './dto/create-role.dto';
 import { RoleSeed } from './roles-seed';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { Role } from './entities/role.entity';
+import { frontRoutes } from 'src/auth/front-routes';
 
 @Injectable()
 export class RolesService {
@@ -16,6 +17,27 @@ export class RolesService {
     private readonly permisosService: PermisosService,
     private readonly auditoriaService: AuditoriaService,
   ) {}
+
+  private validarRutaInicio(rutaInicio: string, permisosClaves: string[]) {
+    const route = frontRoutes.find((item) => item.path === rutaInicio);
+    if (!route) {
+      throw new BadRequestException(
+        `La ruta de inicio "${rutaInicio}" no existe en el frontend`,
+      );
+    }
+
+    const permisosSet = new Set(permisosClaves);
+    const puedeAcceder = route.requiredAny.some((permiso) =>
+      permisosSet.has(permiso),
+    );
+
+    if (!puedeAcceder) {
+      throw new BadRequestException(
+        `La ruta de inicio "${rutaInicio}" no coincide con los permisos del rol`,
+      );
+    }
+  }
+
   async create(createRoleDto: CrearRoleDto, empleadoActorId?: string | null): Promise<Role> {
     //1.- primero verificamos que el rol no exista
     const existeRole = await this.roleRepository.findOne({
@@ -30,6 +52,10 @@ export class RolesService {
       createRoleDto.permisosIds.map((permisoId) =>
         this.permisosService.findOne(permisoId),
       ),
+    );
+    this.validarRutaInicio(
+      createRoleDto.rutaInicio,
+      permisos.map((permiso) => permiso.clave),
     );
 
     const rol = this.roleRepository.create({
@@ -118,6 +144,11 @@ export class RolesService {
       rol.permisos = Array.from(permisosMap.values());
     }
 
+    this.validarRutaInicio(
+      dto.rutaInicio ?? rol.rutaInicio,
+      rol.permisos.map((permiso) => permiso.clave),
+    );
+
     if (dto.nombre) rol.nombre = dto.nombre;
     if (dto.descripcion !== undefined) rol.descripcion = dto.descripcion;
     if (dto.rutaInicio) rol.rutaInicio = dto.rutaInicio;
@@ -195,6 +226,8 @@ export class RolesService {
     const sinCambios: Role[] = [];
 
     for (const seedRole of seedRoles) {
+      this.validarRutaInicio(seedRole.rutaInicio, seedRole.permisosClaves);
+
       const permisosRol = seedRole.permisosClaves.map((clave) => {
         const permiso = permisosPorClave.get(clave);
         if (!permiso) {

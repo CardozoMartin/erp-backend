@@ -1,14 +1,17 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'crypto';
-import { Socket, connect as netConnect } from 'net';
-import { TLSSocket, connect as tlsConnect } from 'tls';
 import { Repository } from 'typeorm';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { CifradoService } from 'src/shared/cifrado.service';
+import { EMAIL_CIFRADO } from 'src/shared/shared.module';
+import { EmailTemplateService } from 'src/email/email-template.service';
 import {
   ProbarConfiguracionEmailDto,
   UpsertConfiguracionEmailDto,
@@ -23,22 +26,6 @@ type SafeEmailConfig = Omit<ConfiguracionEmailSucursal, 'password_encriptado'> &
   password_configurado: boolean;
 };
 
-type SmtpOptions = {
-  host: string;
-  port: number;
-  seguridad: SeguridadEmail;
-  user: string;
-  password: string;
-  from: string;
-  fromName?: string | null;
-  replyTo?: string | null;
-  to: string;
-  bcc?: string | null;
-  subject: string;
-  text: string;
-  attachments?: EmailAttachment[];
-};
-
 export type EmailAttachment = {
   filename: string;
   contentType: string;
@@ -48,7 +35,10 @@ export type EmailAttachment = {
 export type EnviarCorreoSucursalOptions = {
   to: string;
   subject: string;
+  /** Texto plano — siempre requerido como fallback para clientes sin HTML */
   text: string;
+  /** HTML opcional — si se provee se envía como parte alternativa */
+  html?: string;
   bcc?: string | null;
   attachments?: EmailAttachment[];
 };
@@ -59,6 +49,8 @@ export class ConfiguracionEmailService {
     @InjectRepository(ConfiguracionEmailSucursal)
     private readonly emailRepo: Repository<ConfiguracionEmailSucursal>,
     private readonly auditoriaService: AuditoriaService,
+    @Inject(EMAIL_CIFRADO) private readonly cifrado: CifradoService,
+    private readonly templates: EmailTemplateService,
   ) {}
 
   async findBySucursal(sucursalId: string): Promise<SafeEmailConfig> {
@@ -82,7 +74,7 @@ export class ConfiguracionEmailService {
     }
 
     const password_encriptado = normalized.password
-      ? this.encrypt(normalized.password)
+      ? this.cifrado.cifrar(normalized.password)
       : current?.password_encriptado;
 
     const entity = this.emailRepo.create({
@@ -119,21 +111,21 @@ export class ConfiguracionEmailService {
     if (!config) {
       throw new NotFoundException(`No hay configuracion de email para la sucursal ${sucursalId}`);
     }
-    await this.sendSmtp({
-      host: config.smtp_host,
-      port: config.smtp_port,
-      seguridad: config.seguridad,
-      user: config.usuario,
-      password: this.decrypt(config.password_encriptado),
-      from: config.email_remitente,
-      fromName: config.nombre_remitente,
-      replyTo: config.email_respuesta,
+
+    // 1.- Renderiza el HTML de prueba con el nombre del negocio
+    const html = this.templates.renderizar('prueba', {
+      nombreEmpresa: config.nombre_remitente ?? 'ERP',
+    });
+
+    const transporter = this.crearTransporter(config);
+    await this.enviarConTransporter(transporter, {
+      from: this.formatFrom(config.email_remitente, config.nombre_remitente),
       to: dto.destino,
-      bcc: config.copia_oculta_admin ? config.email_copia_admin : null,
+      replyTo: config.email_respuesta ?? undefined,
+      bcc: config.copia_oculta_admin && config.email_copia_admin ? config.email_copia_admin : undefined,
       subject: 'Prueba de correo - ERP POS',
-      text:
-        'La configuracion de email esta funcionando correctamente.\n\n' +
-        'Este mensaje fue enviado desde el modulo Configuracion Email del ERP.',
+      text: 'La configuracion de email esta funcionando correctamente. Este mensaje fue enviado desde el modulo Configuracion Email del ERP.',
+      html,
     });
 
     config.activo = true;
@@ -168,22 +160,56 @@ export class ConfiguracionEmailService {
         'La configuracion de email todavia no fue verificada. Envie un correo de prueba desde Configuracion Email.',
       );
     }
-    await this.sendSmtp({
-      host: config.smtp_host,
-      port: config.smtp_port,
-      seguridad: config.seguridad,
-      user: config.usuario,
-      password: this.decrypt(config.password_encriptado),
-      from: config.email_remitente,
-      fromName: config.nombre_remitente,
-      replyTo: config.email_respuesta,
+
+    const transporter = this.crearTransporter(config);
+    await this.enviarConTransporter(transporter, {
+      from: this.formatFrom(config.email_remitente, config.nombre_remitente),
       to: options.to,
-      bcc: options.bcc ?? (config.copia_oculta_admin ? config.email_copia_admin : null),
+      replyTo: config.email_respuesta ?? undefined,
+      bcc: options.bcc ?? (config.copia_oculta_admin ? config.email_copia_admin ?? undefined : undefined),
       subject: options.subject,
       text: options.text,
-      attachments: options.attachments,
+      html: options.html,
+      attachments: options.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+      })),
     });
+
     return { ok: true };
+  }
+
+  // 2.- Crea el Transporter de Nodemailer según la seguridad configurada
+  private crearTransporter(config: ConfiguracionEmailSucursal): Transporter {
+    const password = this.cifrado.descifrar(config.password_encriptado);
+
+    const secure = config.seguridad === SeguridadEmail.SSL;
+    const requireTLS = config.seguridad === SeguridadEmail.STARTTLS;
+
+    return nodemailer.createTransport({
+      host: config.smtp_host,
+      port: config.smtp_port,
+      secure,
+      requireTLS,
+      auth: { user: config.usuario, pass: password },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 20000,
+      greetingTimeout: 15000,
+    });
+  }
+
+  // 3.- Envía el mensaje y mapea errores de Nodemailer a BadRequestException
+  private async enviarConTransporter(
+    transporter: Transporter,
+    mensaje: nodemailer.SendMailOptions,
+  ): Promise<void> {
+    try {
+      await transporter.sendMail(mensaje);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(`Error al enviar el email: ${msg}`);
+    }
   }
 
   private normalizeDto(dto: UpsertConfiguracionEmailDto) {
@@ -213,6 +239,10 @@ export class ConfiguracionEmailService {
     return value?.trim() || null;
   }
 
+  private formatFrom(email: string, nombre?: string | null): string {
+    return nombre ? `"${nombre}" <${email}>` : email;
+  }
+
   private toSafeConfig(config: ConfiguracionEmailSucursal): SafeEmailConfig {
     const { password_encriptado, ...safe } = config;
     void password_encriptado;
@@ -220,180 +250,6 @@ export class ConfiguracionEmailService {
   }
 
   private snapshot(config: ConfiguracionEmailSucursal) {
-    const safe = this.toSafeConfig(config);
-    return { ...safe };
-  }
-
-  private getEncryptionKey() {
-    const secret =
-      process.env.CONFIG_ENCRYPTION_KEY ||
-      process.env.EMAIL_ENCRYPTION_KEY ||
-      process.env.JWT_SECRET ||
-      'erp-local-config-key';
-    return createHash('sha256').update(secret).digest();
-  }
-
-  private encrypt(value: string) {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.getEncryptionKey(), iv);
-    const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return `${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
-  }
-
-  private decrypt(value: string) {
-    const [ivText, tagText, encryptedText] = value.split(':');
-    if (!ivText || !tagText || !encryptedText) {
-      throw new BadRequestException('La clave de email guardada no tiene un formato valido');
-    }
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.getEncryptionKey(),
-      Buffer.from(ivText, 'base64'),
-    );
-    decipher.setAuthTag(Buffer.from(tagText, 'base64'));
-    return Buffer.concat([
-      decipher.update(Buffer.from(encryptedText, 'base64')),
-      decipher.final(),
-    ]).toString('utf8');
-  }
-
-  private async sendSmtp(options: SmtpOptions) {
-    let socket: Socket | TLSSocket =
-      options.seguridad === SeguridadEmail.SSL
-        ? tlsConnect({ host: options.host, port: options.port, servername: options.host })
-        : netConnect({ host: options.host, port: options.port });
-
-    socket.setTimeout(20000);
-    const read = () => this.readSmtpResponse(socket);
-    const write = async (command: string, expected: number[]) => {
-      socket.write(`${command}\r\n`);
-      const response = await read();
-      if (!expected.includes(response.code)) {
-        throw new BadRequestException(`SMTP rechazo ${command.split(' ')[0]}: ${response.message}`);
-      }
-      return response;
-    };
-
-    try {
-      const greeting = await read();
-      if (greeting.code !== 220) {
-        throw new BadRequestException(`SMTP no disponible: ${greeting.message}`);
-      }
-
-      await write(`EHLO ${this.localHostname()}`, [250]);
-      if (options.seguridad === SeguridadEmail.STARTTLS) {
-        await write('STARTTLS', [220]);
-        socket = tlsConnect({ socket, servername: options.host });
-        await write(`EHLO ${this.localHostname()}`, [250]);
-      }
-
-      await write('AUTH LOGIN', [334]);
-      await write(Buffer.from(options.user).toString('base64'), [334]);
-      await write(Buffer.from(options.password).toString('base64'), [235]);
-      await write(`MAIL FROM:<${options.from}>`, [250]);
-      await write(`RCPT TO:<${options.to}>`, [250, 251]);
-      if (options.bcc) {
-        await write(`RCPT TO:<${options.bcc}>`, [250, 251]);
-      }
-      await write('DATA', [354]);
-      socket.write(`${this.buildMessage(options)}\r\n.\r\n`);
-      const sent = await read();
-      if (sent.code !== 250) {
-        throw new BadRequestException(`SMTP no pudo enviar el mensaje: ${sent.message}`);
-      }
-      await write('QUIT', [221]);
-    } finally {
-      socket.end();
-    }
-  }
-
-  private readSmtpResponse(socket: Socket | TLSSocket): Promise<{ code: number; message: string }> {
-    return new Promise((resolve, reject) => {
-      let buffer = '';
-      const cleanup = () => {
-        socket.off('data', onData);
-        socket.off('error', onError);
-        socket.off('timeout', onTimeout);
-      };
-      const onError = (error: Error) => {
-        cleanup();
-        reject(new BadRequestException(`Error SMTP: ${error.message}`));
-      };
-      const onTimeout = () => {
-        cleanup();
-        reject(new BadRequestException('Tiempo de espera agotado conectando SMTP'));
-      };
-      const onData = (data: Buffer) => {
-        buffer += data.toString('utf8');
-        const lines = buffer.split(/\r?\n/).filter(Boolean);
-        const last = lines[lines.length - 1];
-        if (/^\d{3} /.test(last)) {
-          cleanup();
-          resolve({ code: Number(last.slice(0, 3)), message: lines.join(' ') });
-        }
-      };
-      socket.on('data', onData);
-      socket.on('error', onError);
-      socket.on('timeout', onTimeout);
-    });
-  }
-
-  private buildMessage(options: SmtpOptions) {
-    if (options.attachments?.length) {
-      const boundary = `erp_${randomBytes(12).toString('hex')}`;
-      const headers = [
-        `From: ${this.formatAddress(options.from, options.fromName)}`,
-        `To: <${options.to}>`,
-        options.replyTo ? `Reply-To: <${options.replyTo}>` : null,
-        `Subject: ${this.encodeHeader(options.subject)}`,
-        'MIME-Version: 1.0',
-        `Content-Type: multipart/mixed; boundary="${boundary}"`,
-      ].filter(Boolean);
-      const parts = [
-        `--${boundary}`,
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 8bit',
-        '',
-        options.text,
-        ...options.attachments.flatMap((attachment) => [
-          `--${boundary}`,
-          `Content-Type: ${attachment.contentType}; name="${this.escapeMimeParam(attachment.filename)}"`,
-          'Content-Transfer-Encoding: base64',
-          `Content-Disposition: attachment; filename="${this.escapeMimeParam(attachment.filename)}"`,
-          '',
-          attachment.content.toString('base64').replace(/.{1,76}/g, '$&\r\n').trim(),
-        ]),
-        `--${boundary}--`,
-      ];
-      return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`;
-    }
-
-    const headers = [
-      `From: ${this.formatAddress(options.from, options.fromName)}`,
-      `To: <${options.to}>`,
-      options.replyTo ? `Reply-To: <${options.replyTo}>` : null,
-      `Subject: ${this.encodeHeader(options.subject)}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: 8bit',
-    ].filter(Boolean);
-    return `${headers.join('\r\n')}\r\n\r\n${options.text}`;
-  }
-
-  private formatAddress(email: string, name?: string | null) {
-    return name ? `${this.encodeHeader(name)} <${email}>` : `<${email}>`;
-  }
-
-  private encodeHeader(value: string) {
-    return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
-  }
-
-  private escapeMimeParam(value: string) {
-    return value.replace(/["\r\n]/g, '_');
-  }
-
-  private localHostname() {
-    return process.env.SMTP_EHLO_HOST || 'localhost';
+    return { ...this.toSafeConfig(config) };
   }
 }

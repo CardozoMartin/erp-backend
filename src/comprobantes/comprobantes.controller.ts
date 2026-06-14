@@ -7,9 +7,12 @@ import {
   Post,
   Query,
   Request,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { ComprobantesService } from './comprobantes.service';
+import { PdfService } from 'src/pdf/pdf.service';
 import {
   CambiarEstadoComprobanteDto,
   CreateComprobanteDto,
@@ -21,7 +24,10 @@ import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator'
 
 @Controller('comprobantes')
 export class ComprobantesController {
-  constructor(private readonly comprobantesService: ComprobantesService) {}
+  constructor(
+    private readonly comprobantesService: ComprobantesService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   @Post()
   create(
@@ -68,6 +74,22 @@ export class ComprobantesController {
     @Body() dto: CambiarEstadoComprobanteDto,
   ) {
     return this.comprobantesService.cambiarEstado(id, sucursalId, dto, req.user?.id);
+  }
+
+  @Get(':id/pdf')
+  @RequierePermiso('ventas.ver')
+  async descargarPdf(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.pdfService.generarComprobantePdf(id, sucursalId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="comprobante-${id}.pdf"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   @Post(':id/enviar-email')

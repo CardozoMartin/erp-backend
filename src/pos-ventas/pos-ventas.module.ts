@@ -12,6 +12,7 @@ import { PagosPosModule } from 'src/pagos-pos/pagos-pos.module';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { PosVentasController } from './pos-ventas.controller';
 import { PosVentasService } from './pos-ventas.service';
+import { PosVentasQueryService } from './pos-ventas-query.service';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { PosVentasService } from './pos-ventas.service';
     AuditoriaModule,
   ],
   controllers: [PosVentasController],
-  providers: [PosVentasService],
-  exports: [PosVentasService],
+  providers: [PosVentasService, PosVentasQueryService],
+  exports: [PosVentasService, PosVentasQueryService],
 })
 export class PosVentasModule {}

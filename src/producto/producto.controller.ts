@@ -23,6 +23,42 @@ import { ProductoService } from './producto.service';
 export class ProductoController {
   constructor(private readonly productoService: ProductoService) {}
 
+  private puedeVerCosto(permisos: string[] = []) {
+    return permisos.includes('productos.ver_costos');
+  }
+
+  private puedeVerMargen(permisos: string[] = []) {
+    return permisos.includes('productos.ver_margenes');
+  }
+
+  private filtrarDatosFinancieros<T>(payload: T, permisos: string[] = []): T {
+    const puedeVerCosto = this.puedeVerCosto(permisos);
+    const puedeVerMargen = this.puedeVerMargen(permisos);
+    const filtrarProducto = (producto: any) => {
+      if (!producto) return producto;
+      const limpio = { ...producto };
+      if (!puedeVerCosto) delete limpio.precio_costo;
+      if (!puedeVerMargen) delete limpio.margen_ganancia;
+      return limpio;
+    };
+
+    if (Array.isArray(payload)) {
+      return payload.map((producto) => filtrarProducto(producto)) as T;
+    }
+
+    return filtrarProducto(payload) as T;
+  }
+
+  private filtrarDtoFinanciero<T extends Record<string, any>>(
+    dto: T,
+    permisos: string[] = [],
+  ): T {
+    const limpio = { ...dto };
+    if (!this.puedeVerCosto(permisos)) delete limpio.precio_costo;
+    if (!this.puedeVerMargen(permisos)) delete limpio.margen_ganancia;
+    return limpio;
+  }
+
   @Post()
   @RequierePermiso('productos.crear')
   create(
@@ -30,11 +66,15 @@ export class ProductoController {
     @SucursalActiva() sucursalActivaId: string,
     @Request() req,
   ) {
-    return this.productoService.create(
-      createProductoDto,
-      sucursalActivaId,
-      req.user?.id,
-    );
+    return this.productoService
+      .create(
+        this.filtrarDtoFinanciero(createProductoDto, req.user?.permisos),
+        sucursalActivaId,
+        req.user?.id,
+      )
+      .then((producto) =>
+        this.filtrarDatosFinancieros(producto, req.user?.permisos),
+      );
   }
 
   @Get()
@@ -43,14 +83,27 @@ export class ProductoController {
     @SucursalesActivas() sucursalIds: string[],
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '30',
+    @Request() req,
   ) {
-    return this.productoService.findAll(sucursalIds);
+    return this.productoService
+      .findAll(sucursalIds)
+      .then((productos) =>
+        this.filtrarDatosFinancieros(productos, req.user?.permisos),
+      );
   }
 
   @Get(':id')
   @RequierePermiso('productos.ver')
-  findOne(@Param('id') id: string, @SucursalesActivas() sucursalIds: string[]) {
-    return this.productoService.findOne(id, sucursalIds);
+  findOne(
+    @Param('id') id: string,
+    @SucursalesActivas() sucursalIds: string[],
+    @Request() req,
+  ) {
+    return this.productoService
+      .findOne(id, sucursalIds)
+      .then((producto) =>
+        this.filtrarDatosFinancieros(producto, req.user?.permisos),
+      );
   }
 
   @Patch(':id')
@@ -61,12 +114,16 @@ export class ProductoController {
     @SucursalActiva() sucursalActivaId: string,
     @Request() req,
   ) {
-    return this.productoService.update(
-      id,
-      updateProductoDto,
-      req.user?.id,
-      sucursalActivaId,
-    );
+    return this.productoService
+      .update(
+        id,
+        this.filtrarDtoFinanciero(updateProductoDto, req.user?.permisos),
+        req.user?.id,
+        sucursalActivaId,
+      )
+      .then((producto) =>
+        this.filtrarDatosFinancieros(producto, req.user?.permisos),
+      );
   }
 
   @Delete(':id')
@@ -119,10 +176,14 @@ export class ProductoController {
       variante_id?: string | null;
     },
   ) {
-    return this.productoService.adjustStockProduct(id, {
-      ...ajustarStockDto,
-      sucursal_id: sucursalActivaId,
-    }, req.user?.id);
+    return this.productoService.adjustStockProduct(
+      id,
+      {
+        ...ajustarStockDto,
+        sucursal_id: sucursalActivaId,
+      },
+      req.user?.id,
+    );
   }
 
   @Patch(':id/stock')
@@ -145,9 +206,13 @@ export class ProductoController {
       ubicacion_referencia?: string | null;
     },
   ) {
-    return this.productoService.updateStockProduct(id, {
-      ...ajustarStockDto,
-      sucursal_id: sucursalActivaId,
-    }, req.user?.id);
+    return this.productoService.updateStockProduct(
+      id,
+      {
+        ...ajustarStockDto,
+        sucursal_id: sucursalActivaId,
+      },
+      req.user?.id,
+    );
   }
 }

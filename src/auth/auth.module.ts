@@ -1,5 +1,6 @@
 // auth/auth.module.ts
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
@@ -17,9 +18,12 @@ import { AuditoriaModule } from 'src/auditoria/auditoria.module';
     PassportModule,
     TypeOrmModule.forFeature([Empleado, EmpleadoSucursal]),
     AuditoriaModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'dev_secret_cambiar_en_prod',
-      signOptions: { expiresIn: '8h' },
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow('JWT_SECRET'),
+        signOptions: { expiresIn: '8h' },
+      }),
     }),
     EmpleadosModule,
   ],
