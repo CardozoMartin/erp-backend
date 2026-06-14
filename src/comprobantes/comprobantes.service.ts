@@ -4,20 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ConfiguracionService } from 'src/configuracion/configuracion.service';
-import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email.service';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
-import { Cliente } from 'src/clientes/entities/cliente.entity';
-import { ListaPrecioService } from 'src/lista-precio/lista-precio.service';
-import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
-import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
-import { Producto } from 'src/producto/entities/producto.entity';
-import { Stock } from 'src/stock/entities/stock.entity';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { DataSource, Repository } from 'typeorm';
 import {
   CambiarEstadoComprobanteDto,
   CreateComprobanteDto,
-  CreateComprobanteItemDto,
 } from './dto/create-comprobante.dto';
 import { UpdateComprobanteDto } from './dto/update-comprobante.dto';
 import { EnviarComprobanteEmailDto } from './dto/enviar-comprobante-email.dto';
@@ -28,6 +20,9 @@ import {
 } from './entities/comprobante.entity';
 import { ComprobanteItem } from './entities/comprobante-item.entity';
 import { NumeradorComprobante } from './entities/numerador-comprobante.entity';
+import { ComprobanteNumeradorService } from './services/comprobante-numerador.service';
+import { ComprobanteItemsService } from './services/comprobante-items.service';
+import { ComprobanteEmailService } from './services/comprobante-email.service';
 
 @Injectable()
 export class ComprobantesService {
@@ -38,19 +33,12 @@ export class ComprobantesService {
     private readonly itemRepo: Repository<ComprobanteItem>,
     @InjectRepository(NumeradorComprobante)
     private readonly numeradorRepo: Repository<NumeradorComprobante>,
-    @InjectRepository(Producto)
-    private readonly productoRepo: Repository<Producto>,
-    @InjectRepository(Stock)
-    private readonly stockRepo: Repository<Stock>,
-    @InjectRepository(ProductoSucursal)
-    private readonly productoSucursalRepo: Repository<ProductoSucursal>,
-    @InjectRepository(Cliente)
-    private readonly clienteRepo: Repository<Cliente>,
     private readonly configuracionService: ConfiguracionService,
-    private readonly configuracionEmailService: ConfiguracionEmailService,
-    private readonly listaPrecioService: ListaPrecioService,
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
+    private readonly numeradorService: ComprobanteNumeradorService,
+    private readonly itemsService: ComprobanteItemsService,
+    private readonly emailService: ComprobanteEmailService,
   ) {}
 
   async create(
@@ -67,15 +55,15 @@ export class ComprobantesService {
     await queryRunner.startTransaction();
 
     try {
-      // 1. Generamos numero dentro de la transaccion para no repetir correlativos.
-      const numeracion = await this.generarNumero(
+      // 1.- Generar número dentro de la transacción para no repetir correlativos
+      const numeracion = await this.numeradorService.generarNumero(
         sucursalId,
         dto.tipo,
         queryRunner.manager.getRepository(NumeradorComprobante),
       );
 
-      // 2. Validamos productos/stock y calculamos cada item congelando precio, descuento y subtotal.
-      const itemsCalculados = await this.calcularItemsValidados(
+      // 2.- Validar productos/stock y calcular items
+      const itemsCalculados = await this.itemsService.calcularItemsValidados(
         sucursalId,
         dto.tipo,
         dto.items,
@@ -83,27 +71,22 @@ export class ComprobantesService {
         dto.lista_precio_id,
       );
 
-      // 3. Calculamos totales generales del comprobante.
+      // 3.- Calcular totales del comprobante
       const subtotal = this.round(
         itemsCalculados.reduce((sum, item) => sum + Number(item.subtotal), 0),
       );
       const descuentoPorcentaje = Number(dto.descuento_global_porcentaje ?? 0);
-      const descuentoPorcentajeMonto = this.round(
-        subtotal * (descuentoPorcentaje / 100),
-      );
+      const descuentoPorcentajeMonto = this.round(subtotal * (descuentoPorcentaje / 100));
       const descuentoGlobalMonto = Number(dto.descuento_global_monto ?? 0);
       const descuentoTotal = this.round(
-        itemsCalculados.reduce(
-          (sum, item) => sum + Number(item.descuento_monto ?? 0),
-          0,
-        ) +
+        itemsCalculados.reduce((sum, item) => sum + Number(item.descuento_monto ?? 0), 0) +
           descuentoPorcentajeMonto +
           descuentoGlobalMonto,
       );
       const recargoTotal = Number(dto.recargo_total ?? 0);
       const total = this.round(subtotal - descuentoTotal + recargoTotal);
 
-      // 4. Creamos la cabecera con estado inicial coherente al tipo.
+      // 4.- Crear cabecera con estado inicial coherente al tipo
       const comprobante = this.comprobanteRepo.create({
         tipo: dto.tipo,
         estado: dto.estado ?? this.estadoInicial(dto.tipo),
@@ -134,12 +117,9 @@ export class ComprobantesService {
       });
       await queryRunner.manager.save(comprobante);
 
-      // 5. Guardamos los items relacionados al comprobante creado.
+      // 5.- Guardar items relacionados al comprobante
       const items = itemsCalculados.map((item) =>
-        this.itemRepo.create({
-          ...item,
-          comprobante_id: comprobante.id,
-        }),
+        this.itemRepo.create({ ...item, comprobante_id: comprobante.id }),
       );
       await queryRunner.manager.save(items);
 
@@ -208,13 +188,12 @@ export class ComprobantesService {
       );
     }
 
-    // 1. Actualizamos datos simples de cabecera. Los items se recalculan si vienen en el DTO.
+    // 1.- Actualizar datos simples de cabecera
     Object.assign(comprobante, {
       caja_id: dto.caja_id ?? comprobante.caja_id,
       cliente_id: dto.cliente_id ?? comprobante.cliente_id,
       empleado_cajero_id: dto.empleado_cajero_id ?? comprobante.empleado_cajero_id,
-      empleado_despachador_id:
-        dto.empleado_despachador_id ?? comprobante.empleado_despachador_id,
+      empleado_despachador_id: dto.empleado_despachador_id ?? comprobante.empleado_despachador_id,
       lista_precio_id: dto.lista_precio_id ?? comprobante.lista_precio_id,
       observaciones: dto.observaciones ?? comprobante.observaciones,
       fecha_vencimiento: dto.fecha_vencimiento
@@ -223,7 +202,7 @@ export class ComprobantesService {
     });
 
     if (dto.items?.length) {
-      const itemsCalculados = await this.calcularItemsValidados(
+      const itemsCalculados = await this.itemsService.calcularItemsValidados(
         sucursalId,
         comprobante.tipo,
         dto.items,
@@ -241,14 +220,10 @@ export class ComprobantesService {
       );
       comprobante.recargo_total = Number(dto.recargo_total ?? comprobante.recargo_total);
       const descuentoPorcentajeMonto = this.round(
-        comprobante.subtotal *
-          (Number(comprobante.descuento_global_porcentaje ?? 0) / 100),
+        comprobante.subtotal * (Number(comprobante.descuento_global_porcentaje ?? 0) / 100),
       );
       comprobante.descuento_total = this.round(
-        itemsCalculados.reduce(
-          (sum, item) => sum + Number(item.descuento_monto ?? 0),
-          0,
-        ) +
+        itemsCalculados.reduce((sum, item) => sum + Number(item.descuento_monto ?? 0), 0) +
           descuentoPorcentajeMonto +
           Number(comprobante.descuento_global_monto ?? 0),
       );
@@ -293,7 +268,6 @@ export class ComprobantesService {
     dto: CambiarEstadoComprobanteDto,
     empleadoId?: string | null,
   ): Promise<Comprobante> {
-    // 1. Por ahora solo cambiamos estado. Cuando creemos flujos, validamos transiciones aca.
     const comprobante = await this.findOne(id, sucursalId);
     const antes = this.snapshotComprobante(comprobante);
     comprobante.estado = dto.estado;
@@ -320,10 +294,7 @@ export class ComprobantesService {
   }
 
   async verNumeradores(sucursalId: string): Promise<NumeradorComprobante[]> {
-    return this.numeradorRepo.find({
-      where: { sucursal_id: sucursalId },
-      order: { tipo: 'ASC' },
-    });
+    return this.numeradorService.verNumeradores(sucursalId);
   }
 
   async enviarPorEmail(
@@ -333,261 +304,16 @@ export class ComprobantesService {
     empleadoId?: string | null,
   ) {
     const comprobante = await this.findOne(id, sucursalId);
-    const cliente = comprobante.cliente_id
-      ? await this.clienteRepo.findOne({ where: { id: comprobante.cliente_id } })
-      : null;
-    const destino = dto.destino.trim().toLowerCase();
-    const asunto =
-      dto.asunto?.trim() ||
-      `${comprobante.tipo.replaceAll('_', ' ')} ${comprobante.numero}`;
-    const text = this.buildComprobanteEmailText(comprobante, cliente, dto.mensaje);
-
-    await this.configuracionEmailService.enviarCorreoSucursal(sucursalId, {
-      to: destino,
-      subject: asunto,
-      text,
-    });
-
-    await this.auditoriaService.registrar({
-      modulo: 'comprobantes',
-      accion: 'ENVIAR_COMPROBANTE_EMAIL',
-      entidad: 'comprobante',
-      entidad_id: comprobante.id,
-      empleado_id: empleadoId ?? null,
-      sucursal_id: sucursalId,
-      descripcion: `Comprobante ${comprobante.numero} enviado por email a ${destino}`,
-      metadata: {
-        destino,
-        tipo: comprobante.tipo,
-        numero: comprobante.numero,
-        total: Number(comprobante.total ?? 0),
-      },
-    });
-
-    return { ok: true, message: `Comprobante enviado a ${destino}` };
+    return this.emailService.enviarPorEmail(comprobante, sucursalId, dto, empleadoId);
   }
 
-  private async generarNumero(
-    sucursalId: string,
-    tipo: TipoComprobante,
-    repo: Repository<NumeradorComprobante>,
-  ): Promise<{ numero: string; secuencial: number; prefijo: string }> {
-    // 1. Buscamos el numerador de esa sucursal y tipo de comprobante.
-    let numerador = await repo.findOne({
-      where: { sucursal_id: sucursalId, tipo },
-      lock: { mode: 'pessimistic_write' },
-    });
-
-    // 2. Si no existe, lo creamos con el prefijo que corresponde.
-    if (!numerador) {
-      numerador = repo.create({
-        sucursal_id: sucursalId,
-        tipo,
-        ultimo_numero: 0,
-        prefijo: await this.prefijoPorTipo(sucursalId, tipo),
-        longitud: 6,
-      });
-    }
-
-    // 3. Incrementamos y guardamos antes de devolver el numero armado.
-    numerador.ultimo_numero = Number(numerador.ultimo_numero) + 1;
-    await repo.save(numerador);
-
-    return {
-      secuencial: numerador.ultimo_numero,
-      numero: this.formatearNumero(tipo, numerador),
-      prefijo: numerador.prefijo,
-    };
-  }
-
-  private async prefijoPorTipo(
-    sucursalId: string,
-    tipo: TipoComprobante,
-  ): Promise<string> {
-    const config = await this.configuracionService.crearPorDefecto(sucursalId);
-
-    if (tipo === TipoComprobante.COTIZACION) return config.prefijo_cotizacion;
-    if (tipo === TipoComprobante.TICKET) return config.prefijo_ticket;
-    if (tipo === TipoComprobante.REMITO) return config.prefijo_remito;
-    if (tipo === TipoComprobante.NOTA_CREDITO) return config.prefijo_nota_credito;
-    if (
-      tipo === TipoComprobante.FACTURA_A ||
-      tipo === TipoComprobante.FACTURA_B ||
-      tipo === TipoComprobante.FACTURA_C
-    ) {
-      return config.punto_venta_arca ?? '0001';
-    }
-
-    return 'VTA';
-  }
-
-  private formatearNumero(
-    tipo: TipoComprobante,
-    numerador: NumeradorComprobante,
-  ): string {
-    const correlativo = String(numerador.ultimo_numero).padStart(
-      numerador.longitud,
-      '0',
-    );
-
-    if (tipo === TipoComprobante.FACTURA_A) return `A${numerador.prefijo}-${correlativo}`;
-    if (tipo === TipoComprobante.FACTURA_B) return `B${numerador.prefijo}-${correlativo}`;
-    if (tipo === TipoComprobante.FACTURA_C) return `C${numerador.prefijo}-${correlativo}`;
-
-    return `${numerador.prefijo}-${correlativo}`;
-  }
-
-  private calcularItem(item: CreateComprobanteItemDto): Partial<ComprobanteItem> {
-    const cantidad = Number(item.cantidad);
-    const precioUnitario = Number(item.precio_unitario);
-    const bruto = this.round(cantidad * precioUnitario);
-    const descuentoPorcentaje = Number(item.descuento_porcentaje ?? 0);
-    const descuentoPorcentajeMonto = this.round(bruto * (descuentoPorcentaje / 100));
-    const descuentoMonto = this.round(
-      descuentoPorcentajeMonto + Number(item.descuento_monto ?? 0),
-    );
-    const recargoMonto = Number(item.recargo_monto ?? 0);
-
-    return {
-      producto_id: item.producto_id ?? null,
-      variante_id: item.variante_id ?? null,
-      comprobante_item_origen_id: item.comprobante_item_origen_id ?? null,
-      descripcion: item.descripcion,
-      cantidad,
-      precio_unitario: precioUnitario,
-      descuento_porcentaje: descuentoPorcentaje,
-      descuento_monto: descuentoMonto,
-      recargo_monto: recargoMonto,
-      subtotal: this.round(bruto - descuentoMonto + recargoMonto),
-    };
-  }
-
-  private async calcularItemsValidados(
-    sucursalId: string,
-    tipo: TipoComprobante,
-    items: CreateComprobanteItemDto[],
-    omitirValidacionStock = false,
-    listaPrecioId?: string | null,
-  ): Promise<Partial<ComprobanteItem>[]> {
-    const itemsCalculados: Partial<ComprobanteItem>[] = [];
-    const listaPrecio = await this.obtenerListaPrecioActiva(
-      sucursalId,
-      listaPrecioId,
-    );
-
-    for (const item of items) {
-      // 1. Si el item no viene de un producto real, lo dejamos pasar como concepto manual.
-      if (!item.producto_id) {
-        itemsCalculados.push(this.calcularItem(item));
-        continue;
-      }
-
-      // 2. Validamos que el producto exista y pueda venderse por POS.
-      const producto = await this.productoRepo.findOne({
-        where:
-          tipo === TipoComprobante.NOTA_CREDITO
-            ? { id: item.producto_id }
-            : { id: item.producto_id, activo: true, activo_pos: true },
-      });
-      if (!producto) {
-        throw new BadRequestException(
-          `El producto ${item.producto_id} no existe o no esta activo para POS`,
-        );
-      }
-
-      // 3. Validamos que el producto este habilitado para la sucursal activa.
-      if (tipo !== TipoComprobante.NOTA_CREDITO) {
-        const productoSucursal = await this.productoSucursalRepo.findOne({
-          where: {
-            producto_id: item.producto_id,
-            sucursal_id: sucursalId,
-            activo: true,
-          },
-        });
-        if (!productoSucursal) {
-          throw new BadRequestException(
-            `El producto "${producto.nombre}" no esta habilitado en esta sucursal`,
-          );
-        }
-      }
-
-      // 4. Para cotizaciones no exigimos stock, porque una cotizacion no reserva ni descuenta.
-      if (!omitirValidacionStock && this.requiereStockDisponible(tipo)) {
-        const stock = await this.stockRepo.findOne({
-          where: {
-            producto_id: item.producto_id,
-            variante_id: item.variante_id ?? IsNull(),
-            sucursal_id: sucursalId,
-          },
-        });
-        const cantidadDisponible = Number(stock?.cantidad ?? 0);
-        if (cantidadDisponible < Number(item.cantidad)) {
-          throw new BadRequestException(
-            `Stock insuficiente para "${producto.nombre}". Disponible: ${cantidadDisponible}`,
-          );
-        }
-      }
-
-      // 5. Si el frontend no mando descripcion, usamos el nombre actual del producto.
-      const precioUnitario =
-        listaPrecio && !item.comprobante_item_origen_id && tipo !== TipoComprobante.NOTA_CREDITO
-          ? this.listaPrecioService.calcularPrecio(
-              this.precioBaseProducto(producto),
-              listaPrecio,
-            )
-          : Number(item.precio_unitario);
-
-      itemsCalculados.push(
-        this.calcularItem({
-          ...item,
-          precio_unitario: precioUnitario,
-          descripcion: item.descripcion || producto.nombre,
-        }),
-      );
-    }
-
-    return itemsCalculados;
-  }
-
-  private async obtenerListaPrecioActiva(
-    sucursalId: string,
-    listaPrecioId?: string | null,
-  ): Promise<ListaPrecio | undefined> {
-    if (!listaPrecioId) return undefined;
-    const listas = await this.listaPrecioService.findAll(sucursalId);
-    const lista = listas.find((item) => item.id === listaPrecioId);
-    if (!lista) {
-      throw new BadRequestException(
-        'La lista de precio no existe, esta inactiva o no corresponde a la sucursal',
-      );
-    }
-    return lista;
-  }
-
-  private precioBaseProducto(producto: Producto): number {
-    const precioVenta = Number(producto.precio_venta ?? 0);
-    if (Number.isFinite(precioVenta) && precioVenta > 0) return precioVenta;
-    const precioBase = Number(producto.precio_base ?? 0);
-    return Number.isFinite(precioBase) ? precioBase : 0;
-  }
-
-  private requiereStockDisponible(tipo: TipoComprobante): boolean {
-    return [
-      TipoComprobante.VENTA,
-      TipoComprobante.TICKET,
-      TipoComprobante.FACTURA_A,
-      TipoComprobante.FACTURA_B,
-      TipoComprobante.FACTURA_C,
-    ].includes(tipo);
-  }
+  // --- Helpers privados ---
 
   private estadoInicial(tipo: TipoComprobante): EstadoComprobante {
     if (tipo === TipoComprobante.COTIZACION) return EstadoComprobante.BORRADOR;
     if (tipo === TipoComprobante.REMITO) return EstadoComprobante.PENDIENTE;
     if (tipo === TipoComprobante.NOTA_CREDITO) return EstadoComprobante.EMITIDA;
-    if (tipo === TipoComprobante.TICKET) {
-      return EstadoComprobante.EMITIDO;
-    }
+    if (tipo === TipoComprobante.TICKET) return EstadoComprobante.EMITIDO;
     if (
       tipo === TipoComprobante.FACTURA_A ||
       tipo === TipoComprobante.FACTURA_B ||
@@ -598,10 +324,7 @@ export class ComprobantesService {
     return EstadoComprobante.BORRADOR;
   }
 
-  private puntoVentaDesdeTipo(
-    tipo: TipoComprobante,
-    prefijo: string,
-  ): string | null {
+  private puntoVentaDesdeTipo(tipo: TipoComprobante, prefijo: string): string | null {
     if (
       tipo === TipoComprobante.FACTURA_A ||
       tipo === TipoComprobante.FACTURA_B ||
@@ -627,55 +350,7 @@ export class ComprobantesService {
     return Number(Number(value).toFixed(2));
   }
 
-  private buildComprobanteEmailText(
-    comprobante: Comprobante,
-    cliente: Cliente | null,
-    mensaje?: string | null,
-  ) {
-    const clienteNombre =
-      cliente?.razon_social ||
-      [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') ||
-      'Consumidor final';
-    const items = (comprobante.items ?? [])
-      .map((item) => {
-        const cantidad = Number(item.cantidad ?? 0);
-        const precio = this.formatCurrency(Number(item.precio_unitario ?? 0));
-        const subtotal = this.formatCurrency(Number(item.subtotal ?? 0));
-        return `- ${item.descripcion} | Cant.: ${cantidad} | Unit.: ${precio} | Subtotal: ${subtotal}`;
-      })
-      .join('\n');
-
-    return [
-      mensaje?.trim() || 'Te enviamos el detalle de tu comprobante.',
-      '',
-      `${comprobante.tipo.replaceAll('_', ' ')} ${comprobante.numero}`,
-      `Fecha: ${new Date(comprobante.created_at).toLocaleString('es-AR')}`,
-      `Cliente: ${clienteNombre}`,
-      '',
-      'Detalle:',
-      items || 'Sin items registrados.',
-      '',
-      `Subtotal: ${this.formatCurrency(Number(comprobante.subtotal ?? 0))}`,
-      `Descuentos: ${this.formatCurrency(Number(comprobante.descuento_total ?? 0))}`,
-      `Recargos: ${this.formatCurrency(Number(comprobante.recargo_total ?? 0))}`,
-      `Total: ${this.formatCurrency(Number(comprobante.total ?? 0))}`,
-      comprobante.observaciones ? `\nObservaciones: ${comprobante.observaciones}` : '',
-      '',
-      'Gracias por su compra.',
-    ]
-      .filter((line) => line !== null && line !== undefined)
-      .join('\n');
-  }
-
-  private formatCurrency(value: number) {
-    return value.toLocaleString('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      maximumFractionDigits: 2,
-    });
-  }
-
-  private snapshotComprobante(comprobante: Comprobante) {
+  snapshotComprobante(comprobante: Comprobante) {
     return {
       id: comprobante.id,
       tipo: comprobante.tipo,
@@ -734,10 +409,7 @@ export class ComprobantesService {
             Number(anterior.subtotal) !== Number(item.subtotal))
         );
       })
-      .map((item) => ({
-        antes: anteriores.get(key(item)),
-        despues: item,
-      }));
+      .map((item) => ({ antes: anteriores.get(key(item)), despues: item }));
 
     return { agregados, eliminados, modificados };
   }

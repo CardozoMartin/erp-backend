@@ -130,9 +130,13 @@ export class PermisosService {
       existentes.map((permiso) => permiso.clave),
     );
 
-    const permisosFaltantes = permisosSeed.filter(
-      (permiso) => !clavesExistentes.has(permiso.clave),
-    );
+    const permisosFaltantesPorClave = new Map<string, CrearPermisoDto>();
+    for (const permiso of permisosSeed) {
+      if (!clavesExistentes.has(permiso.clave) && !permisosFaltantesPorClave.has(permiso.clave)) {
+        permisosFaltantesPorClave.set(permiso.clave, permiso);
+      }
+    }
+    const permisosFaltantes = Array.from(permisosFaltantesPorClave.values());
     const creados = permisosFaltantes.length
       ? await this.permisoRepository.save(
           this.permisoRepository.create(permisosFaltantes),

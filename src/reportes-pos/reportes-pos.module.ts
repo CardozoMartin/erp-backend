@@ -8,6 +8,7 @@ import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { StockMovimiento } from 'src/stock-movimientos/entities/stock-movimiento.entity';
+import { ExcelModule } from 'src/excel/excel.module';
 import { ReportesPosController } from './reportes-pos.controller';
 import { ReportesPosService } from './reportes-pos.service';
 
@@ -23,6 +24,7 @@ import { ReportesPosService } from './reportes-pos.service';
       MovimientoCaja,
       StockMovimiento,
     ]),
+    ExcelModule,
   ],
   controllers: [ReportesPosController],
   providers: [ReportesPosService],

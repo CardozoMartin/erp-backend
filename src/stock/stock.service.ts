@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import { Producto } from '../producto/entities/producto.entity';
 import { UnidadVenta } from '../producto/entities/producto.entity';
 import { Stock } from './entities/stock.entity';
@@ -134,5 +134,44 @@ export class StockService {
   async remove(id: string): Promise<void> {
     const stock = await this.findOneOrFail(id);
     await this.stockRepo.remove(stock);
+  }
+
+  // Devuelve stocks con cantidad <= cantidad_minima (y cantidad_minima > 0)
+  async alertasStock(sucursalId?: string): Promise<Stock[]> {
+    const where: Parameters<typeof this.stockRepo.find>[0] = {
+      where: {
+        cantidad_minima: MoreThan(0),
+      },
+      relations: ['producto', 'variante'],
+      order: { cantidad: 'ASC' },
+    };
+
+    // Filtrar por sucursal si se especifica
+    const qb = this.stockRepo
+      .createQueryBuilder('stock')
+      .leftJoinAndSelect('stock.producto', 'producto')
+      .leftJoinAndSelect('stock.variante', 'variante')
+      .where('stock.cantidad_minima > 0')
+      .andWhere('stock.cantidad <= stock.cantidad_minima')
+      .orderBy('stock.cantidad', 'ASC');
+
+    if (sucursalId) {
+      qb.andWhere('stock.sucursal_id = :sucursalId', { sucursalId });
+    }
+
+    return qb.getMany();
+  }
+
+  async conteoAlertas(sucursalId?: string): Promise<number> {
+    const qb = this.stockRepo
+      .createQueryBuilder('stock')
+      .where('stock.cantidad_minima > 0')
+      .andWhere('stock.cantidad <= stock.cantidad_minima');
+
+    if (sucursalId) {
+      qb.andWhere('stock.sucursal_id = :sucursalId', { sucursalId });
+    }
+
+    return qb.getCount();
   }
 }

@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { CreateStockDto, AjustarStockDto } from './dto/create-stock.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
+import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 
 @Controller('stock')
 export class StockController {
@@ -18,6 +19,19 @@ export class StockController {
   @RequierePermiso('stock.ver')
   findAll() {
     return this.stockService.findAll();
+  }
+
+  // Alertas de stock mínimo — rutas antes de :id para no ser capturadas como UUID
+  @Get('alertas')
+  @RequierePermiso('stock.ver')
+  alertas(@SucursalActiva() sucursalId: string) {
+    return this.stockService.alertasStock(sucursalId);
+  }
+
+  @Get('alertas/conteo')
+  @RequierePermiso('stock.ver')
+  conteoAlertas(@SucursalActiva() sucursalId: string) {
+    return this.stockService.conteoAlertas(sucursalId);
   }
 
   // Esta ruta debe ir ANTES de :id para que no la capture como UUID

@@ -1,4 +1,8 @@
+import * as Joi from 'joi';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -52,19 +56,39 @@ import { MercadopagoModule } from './mercadopago/mercadopago.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 3306,
-      username:
-        process.env.DB_USER?.trim() ||
-        process.env.DB_USERNAME?.trim() ||
-        'root',
-      password:
-        process.env.DB_PASS?.trim() || process.env.DB_PASSWORD?.trim() || '',
-      database: process.env.DB_NAME || 'erp',
-      synchronize: true,
-      autoLoadEntities: true,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: Joi.object({
+        NODE_ENV:    Joi.string().valid('development', 'production', 'test').default('development'),
+        DB_HOST:     Joi.string().required(),
+        DB_PORT:     Joi.number().default(3306),
+        DB_USER:     Joi.string().required(),
+        DB_PASS:     Joi.string().required(),
+        DB_NAME:     Joi.string().required(),
+        JWT_SECRET:  Joi.string().min(16).required(),
+        PORT:        Joi.number().default(3000),
+        CORS_ORIGIN: Joi.string().default('http://localhost:5173'),
+      }),
+    }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'global',
+        ttl: 60000,
+        limit: 300,
+      },
+    ]),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'mysql',
+        host:     config.getOrThrow('DB_HOST'),
+        port:     config.getOrThrow<number>('DB_PORT'),
+        username: config.getOrThrow('DB_USER'),
+        password: config.getOrThrow('DB_PASS'),
+        database: config.getOrThrow('DB_NAME'),
+        synchronize: config.get('NODE_ENV') !== 'production',
+        autoLoadEntities: true,
+      }),
     }),
     TypeOrmModule.forFeature([
       Empleado,
@@ -114,6 +138,10 @@ import { MercadopagoModule } from './mercadopago/mercadopago.module';
     MercadopagoModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AppSeedService],
+  providers: [
+    AppService,
+    AppSeedService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

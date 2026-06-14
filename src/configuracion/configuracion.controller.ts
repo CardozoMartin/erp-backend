@@ -50,7 +50,7 @@ export class ConfiguracionController {
   }
 
   @Get(':sucursalId')
-  @RequiereAlgunoPermiso('admin.servicios', 'config.pos')
+  @RequiereAlgunoPermiso('admin.servicios', 'config.pos', 'ventas.crear', 'caja.cobrar', 'caja.abrir', 'ventas.ver')
   findBySucursal(@Param('sucursalId') sucursalId: string) {
     this.logger.log(`GET /configuracion/${sucursalId}`);
     return this.configuracionService.findBySucursal(sucursalId);

@@ -1,7 +1,7 @@
-import 'dotenv/config';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { json, urlencoded } from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppSeedService } from './seed/app-seed.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -9,6 +9,7 @@ import { PermisosGuard } from './auth/guards/permisos.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(helmet());
   app.use(json({ limit: '5mb' }));
   app.use(urlencoded({ extended: true, limit: '5mb' }));
 
