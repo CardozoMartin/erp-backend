@@ -1,4 +1,5 @@
-import { IsDateString, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsPositive, IsUUID, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ReportePosQueryDto {
   @IsOptional()
@@ -16,4 +17,16 @@ export class ReportePosQueryDto {
   @IsOptional()
   @IsUUID()
   empleado_id?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
 }

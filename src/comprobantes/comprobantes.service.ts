@@ -293,6 +293,35 @@ export class ComprobantesService {
     return actualizado;
   }
 
+  async asignarCaja(id: string, sucursalId: string, cajaId: string): Promise<Comprobante> {
+    const comprobante = await this.findOne(id, sucursalId);
+    await this.comprobanteRepo.update(id, { caja_id: cajaId });
+    return this.findOne(id, sucursalId);
+  }
+
+  async tomarParaCobro(id: string, sucursalId: string, cajeroId: string): Promise<Comprobante> {
+    const comprobante = await this.findOne(id, sucursalId);
+    if (
+      ![EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(comprobante.estado)
+    ) {
+      throw new BadRequestException('El comprobante no está en estado cobrable');
+    }
+    if (
+      comprobante.tomada_por_cajero_id &&
+      comprobante.tomada_por_cajero_id !== cajeroId
+    ) {
+      throw new BadRequestException('Esta venta ya está siendo cobrada por otro cajero');
+    }
+    await this.comprobanteRepo.update(id, { tomada_por_cajero_id: cajeroId });
+    return this.findOne(id, sucursalId);
+  }
+
+  async liberarCobro(id: string, sucursalId: string, cajeroId: string): Promise<void> {
+    const comprobante = await this.findOne(id, sucursalId);
+    if (comprobante.tomada_por_cajero_id !== cajeroId) return;
+    await this.comprobanteRepo.update(id, { tomada_por_cajero_id: null });
+  }
+
   async verNumeradores(sucursalId: string): Promise<NumeradorComprobante[]> {
     return this.numeradorService.verNumeradores(sucursalId);
   }

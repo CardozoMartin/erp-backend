@@ -5,7 +5,6 @@ import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email
 import { ConfiguracionSucursal } from 'src/configuracion/entities/configuracion.entity';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { PdfService } from 'src/pdf/pdf.service';
-import { EmailTemplateService } from 'src/email/email-template.service';
 import { Cliente } from 'src/clientes/entities/cliente.entity';
 import { EnviarComprobanteEmailDto } from '../dto/enviar-comprobante-email.dto';
 import { Comprobante } from '../entities/comprobante.entity';
@@ -20,7 +19,6 @@ export class ComprobanteEmailService {
     private readonly configuracionEmailService: ConfiguracionEmailService,
     private readonly auditoriaService: AuditoriaService,
     private readonly pdfService: PdfService,
-    private readonly emailTemplates: EmailTemplateService,
   ) {}
 
   async enviarPorEmail(
@@ -44,52 +42,23 @@ export class ComprobanteEmailService {
     // 2.- Generar PDF server-side
     const pdfBuffer = await this.pdfService.generarComprobantePdf(comprobante.id, sucursalId);
 
-    // 3.- Construir variables para la plantilla HTML
+    // 3.- Datos básicos para el cuerpo del email
+    const nombreEmpresa = configSucursal?.nombre_fantasia_ticket ?? configSucursal?.razon_social_ticket ?? 'ERP';
     const nombreCliente =
       cliente?.razon_social ||
       [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') ||
-      null;
+      'Consumidor final';
+    const mensajeComercial =
+      dto.mensaje?.trim() ||
+      configSucursal?.mensaje_boleta ||
+      configSucursal?.mensaje_ticket ||
+      'Gracias por su compra.';
 
-    const formatPeso = (v: number) =>
-      `$ ${v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    // 4.- HTML simple: empresa, saludo, tipo de comprobante y mensaje
+    const html = this.buildHtmlSimple({ nombreEmpresa, nombreCliente, tipoLabel, numero: comprobante.numero, mensajeComercial });
+    const text = `${nombreEmpresa}\n\nEstimado/a ${nombreCliente},\n\nAdjuntamos su ${tipoLabel} N° ${comprobante.numero}.\n\n${mensajeComercial}`;
 
-    const items = (comprobante.items ?? []).map((item) => ({
-      descripcion: item.descripcion,
-      cantidad: Number(item.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 3 }),
-      precioUnitario: formatPeso(Number(item.precio_unitario)),
-      subtotal: formatPeso(Number(item.subtotal)),
-    }));
-
-    const descuentoTotal = Number(comprobante.descuento_total ?? 0);
-    const recargoTotal = Number(comprobante.recargo_total ?? 0);
-
-    const html = this.emailTemplates.renderizar('comprobante', {
-      nombreEmpresa: configSucursal?.nombre_fantasia_ticket ?? configSucursal?.razon_social_ticket ?? 'ERP',
-      cuitEmpresa: configSucursal?.cuit_ticket ?? null,
-      domicilioEmpresa: configSucursal?.domicilio_ticket ?? null,
-      tipoComprobante: tipoLabel,
-      numeroComprobante: comprobante.numero,
-      fechaEmision: new Date(comprobante.created_at).toLocaleDateString('es-AR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-      }),
-      nombreCliente,
-      totalFormatted: formatPeso(Number(comprobante.total ?? 0)),
-      cae: comprobante.cae ?? null,
-      hayItems: items.length > 0,
-      items,
-      subtotalFormatted: formatPeso(Number(comprobante.subtotal ?? 0)),
-      hayDescuento: descuentoTotal > 0,
-      descuentoFormatted: formatPeso(descuentoTotal),
-      hayRecargo: recargoTotal > 0,
-      recargoFormatted: formatPeso(recargoTotal),
-      tienePdf: true,
-      mensajeComercial: configSucursal?.mensaje_boleta ?? configSucursal?.mensaje_ticket ?? dto.mensaje ?? null,
-    });
-
-    // 4.- Texto plano como fallback
-    const text = this.buildComprobanteEmailText(comprobante, cliente, dto.mensaje);
-
-    // 5.- Enviar email con HTML, texto plano y PDF adjunto
+    // 5.- Enviar email con cuerpo simple y PDF adjunto
     await this.configuracionEmailService.enviarCorreoSucursal(sucursalId, {
       to: destino,
       subject: asunto,
@@ -123,51 +92,37 @@ export class ComprobanteEmailService {
     return { ok: true, message: `Comprobante enviado a ${destino}` };
   }
 
-  private buildComprobanteEmailText(
-    comprobante: Comprobante,
-    cliente: Cliente | null,
-    mensaje?: string | null,
-  ): string {
-    const clienteNombre =
-      cliente?.razon_social ||
-      [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') ||
-      'Consumidor final';
-    const items = (comprobante.items ?? [])
-      .map((item) => {
-        const cantidad = Number(item.cantidad ?? 0);
-        const precio = this.formatCurrency(Number(item.precio_unitario ?? 0));
-        const subtotal = this.formatCurrency(Number(item.subtotal ?? 0));
-        return `- ${item.descripcion} | Cant.: ${cantidad} | Unit.: ${precio} | Subtotal: ${subtotal}`;
-      })
-      .join('\n');
-
-    return [
-      mensaje?.trim() || 'Te enviamos el detalle de tu comprobante.',
-      '',
-      `${comprobante.tipo.replaceAll('_', ' ')} ${comprobante.numero}`,
-      `Fecha: ${new Date(comprobante.created_at).toLocaleString('es-AR')}`,
-      `Cliente: ${clienteNombre}`,
-      '',
-      'Detalle:',
-      items || 'Sin items registrados.',
-      '',
-      `Subtotal: ${this.formatCurrency(Number(comprobante.subtotal ?? 0))}`,
-      `Descuentos: ${this.formatCurrency(Number(comprobante.descuento_total ?? 0))}`,
-      `Recargos: ${this.formatCurrency(Number(comprobante.recargo_total ?? 0))}`,
-      `Total: ${this.formatCurrency(Number(comprobante.total ?? 0))}`,
-      comprobante.observaciones ? `\nObservaciones: ${comprobante.observaciones}` : '',
-      '',
-      'Gracias por su compra.',
-    ]
-      .filter((line) => line !== null && line !== undefined)
-      .join('\n');
-  }
-
-  private formatCurrency(value: number): string {
-    return value.toLocaleString('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      maximumFractionDigits: 2,
-    });
+  private buildHtmlSimple(opts: {
+    nombreEmpresa: string;
+    nombreCliente: string;
+    tipoLabel: string;
+    numero: string;
+    mensajeComercial: string;
+  }): string {
+    return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr><td style="background:#1a1a2e;padding:28px 32px;text-align:center;">
+          <span style="color:#ffffff;font-size:22px;font-weight:700;">${opts.nombreEmpresa}</span>
+        </td></tr>
+        <tr><td style="padding:36px 32px;">
+          <p style="margin:0 0 12px;color:#333;font-size:15px;">Estimado/a <strong>${opts.nombreCliente}</strong>,</p>
+          <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">
+            Adjuntamos su <strong>${opts.tipoLabel} N° ${opts.numero}</strong> en formato PDF.
+          </p>
+          <p style="margin:0;color:#777;font-size:13px;line-height:1.6;">${opts.mensajeComercial}</p>
+        </td></tr>
+        <tr><td style="background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;">
+          <span style="color:#aaa;font-size:11px;">${opts.nombreEmpresa}</span>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
   }
 }

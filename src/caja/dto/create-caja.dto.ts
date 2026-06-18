@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Min,
@@ -59,6 +60,28 @@ export class CerrarCajaDto {
   @IsOptional()
   @IsString()
   descripcion?: string;
+}
+
+export class ConsumoInternoCajaDto {
+  @IsUUID()
+  producto_id!: string;
+
+  @IsOptional()
+  @IsUUID()
+  variante_id?: string | null;
+
+  @IsNumber()
+  @IsPositive()
+  cantidad!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monto?: number;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
 }
 
 export class CajaQueryDto {

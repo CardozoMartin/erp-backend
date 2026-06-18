@@ -4,7 +4,6 @@ import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { ListaPrecioModule } from 'src/lista-precio/lista-precio.module';
 import { PdfModule } from 'src/pdf/pdf.module';
-import { EmailTemplateService } from 'src/email/email-template.service';
 import { Cliente } from 'src/clientes/entities/cliente.entity';
 import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
 import { Producto } from 'src/producto/entities/producto.entity';
@@ -42,7 +41,6 @@ import { ComprobanteEmailService } from './services/comprobante-email.service';
     ComprobanteNumeradorService,
     ComprobanteItemsService,
     ComprobanteEmailService,
-    EmailTemplateService,
   ],
   exports: [ComprobantesService, TypeOrmModule],
 })

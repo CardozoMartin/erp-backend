@@ -112,7 +112,7 @@ export class EmpleadosService {
     return respuesta;
   }
 
-  async findAll(page: number = 1, limit: number = 30) {
+  async findAll(sucursalId: string, page: number = 1, limit: number = 30) {
     const [empleados, total] = await this.empleadosRepo.findAndCount({
       skip: (page - 1) * limit,
       take: limit,
@@ -122,6 +122,9 @@ export class EmpleadosService {
         'sucursales',
         'sucursales.sucursal',
       ],
+      where: {
+        sucursales: { sucursal: { id: sucursalId } },
+      },
     });
     const ventasPorEmpleado = await this.calcularVentasMesActual(
       empleados.map((empleado) => empleado.id),
@@ -205,6 +208,34 @@ export class EmpleadosService {
 
   remove(id: string) {
     return `This action removes a #${id} empleado`;
+  }
+
+  async resetPassword(
+    id: string,
+    actorId?: string | null,
+    sucursalActivaId?: string | null,
+  ): Promise<{ mensaje: string; contrasenaGenerada: string }> {
+    const empleado = await this.cargarEmpleadoCompleto(id);
+
+    const caracteres = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$!';
+    const contrasenaGenerada = Array.from({ length: 12 }, () =>
+      caracteres[Math.floor(Math.random() * caracteres.length)],
+    ).join('');
+
+    empleado.contrasena = await bcrypt.hash(contrasenaGenerada, 10);
+    await this.empleadosRepo.save(empleado);
+
+    await this.auditoriaService.registrar({
+      modulo: 'empleados',
+      accion: 'RESET_PASSWORD',
+      entidad: 'empleado',
+      entidad_id: id,
+      empleado_id: actorId ?? null,
+      sucursal_id: sucursalActivaId ?? null,
+      descripcion: `Contraseña reseteada para: ${empleado.nombreCompleto}`,
+    });
+
+    return { mensaje: 'Contraseña reseteada correctamente', contrasenaGenerada };
   }
 
   async asignarRoles(

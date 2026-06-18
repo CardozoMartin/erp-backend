@@ -15,8 +15,12 @@ import { PagoPos, TipoPagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import {
   AbrirCajaDto,
   CerrarCajaDto,
+  ConsumoInternoCajaDto,
   RegistrarMovimientoCajaDto,
 } from './dto/create-caja.dto';
+import { StockMovimientosService } from 'src/stock-movimientos/stock-movimientos.service';
+import { OperacionAjusteStock } from 'src/stock-movimientos/dto/create-stock-movimiento.dto';
+import { TipoMovimientoStock } from 'src/stock-movimientos/entities/stock-movimiento.entity';
 import { Caja, EstadoCaja } from './entities/caja.entity';
 import {
   MovimientoCaja,
@@ -37,6 +41,7 @@ export class CajaService {
     private readonly pagosService: PagosModuleService,
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
+    private readonly stockMovimientosService: StockMovimientosService,
   ) {}
 
   async abrir(
@@ -323,6 +328,61 @@ export class CajaService {
     }
   }
 
+  async consumoInterno(
+    cajaId: string,
+    sucursalId: string,
+    empleadoId: string,
+    dto: ConsumoInternoCajaDto,
+  ): Promise<{ movimientoCaja: MovimientoCaja }> {
+    const caja = await this.findOne(cajaId, sucursalId);
+    if (caja.estado !== EstadoCaja.ABIERTA) {
+      throw new BadRequestException('La caja debe estar abierta para registrar consumos internos');
+    }
+
+    const descripcion = dto.descripcion ?? 'Consumo interno';
+    const monto = Number(dto.monto ?? 0);
+
+    // 1. Descontar stock via ajuste RESTAR/SALIDA
+    await this.stockMovimientosService.ajusteManual(sucursalId, empleadoId, {
+      producto_id: dto.producto_id,
+      variante_id: dto.variante_id ?? undefined,
+      cantidad: dto.cantidad,
+      operacion: OperacionAjusteStock.RESTAR,
+      tipo: TipoMovimientoStock.SALIDA,
+      descripcion,
+    });
+
+    // 2. Registrar egreso en caja (monto 0 si no se proporciona valor monetario)
+    const movimientoCaja = this.movimientoRepo.create({
+      caja_id: caja.id,
+      tipo: TipoMovimientoCaja.EGRESO,
+      monto,
+      empleado_id: empleadoId,
+      descripcion,
+    });
+    const guardado = await this.movimientoRepo.save(movimientoCaja);
+
+    await this.auditoriaService.registrar({
+      modulo: 'caja',
+      accion: 'CONSUMO_INTERNO',
+      entidad: 'caja',
+      entidad_id: caja.id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion,
+      despues: {
+        caja_id: cajaId,
+        movimiento_id: guardado.id,
+        producto_id: dto.producto_id,
+        variante_id: dto.variante_id ?? null,
+        cantidad: dto.cantidad,
+        monto,
+      },
+    });
+
+    return { movimientoCaja: guardado };
+  }
+
   async registrarEgreso(params: {
     cajaId: string;
     sucursalId: string;
@@ -385,8 +445,8 @@ export class CajaService {
     empleadoId: string,
     dto: CerrarCajaDto,
   ): Promise<Caja> {
-    // 1. Validamos que la caja exista, pertenezca a la sucursal activa y este abierta.
-    const caja = await this.findOne(cajaId, sucursalId);
+    // 1. Validamos que la caja exista, pertenezca a la sucursal activa, al empleado y este abierta.
+    const caja = await this.findOne(cajaId, sucursalId, empleadoId);
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('La caja ya esta cerrada');
     }

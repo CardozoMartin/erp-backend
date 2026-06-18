@@ -6,11 +6,17 @@ import {
 } from 'src/comprobantes/entities/comprobante.entity';
 import { ComprobanteItem } from 'src/comprobantes/entities/comprobante-item.entity';
 import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
-import { Caja } from 'src/caja/entities/caja.entity';
+import { Caja, EstadoCaja } from 'src/caja/entities/caja.entity';
 import {
   MovimientoCaja,
   TipoMovimientoCaja,
 } from 'src/caja/entities/movimiento-caja.entity';
+import { Cliente } from 'src/clientes/entities/cliente.entity';
+import { CuentaCorriente } from 'src/clientes/entities/cuenta-corriente.entity';
+import {
+  MovimientoCuentaCorriente,
+  TipoMovimientoCC,
+} from 'src/clientes/entities/movimiento-cuenta-corriente.entity';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { Producto } from 'src/producto/entities/producto.entity';
@@ -37,6 +43,12 @@ export class ReportesPosService {
     private readonly movimientoCajaRepo: Repository<MovimientoCaja>,
     @InjectRepository(StockMovimiento)
     private readonly stockMovimientoRepo: Repository<StockMovimiento>,
+    @InjectRepository(Cliente)
+    private readonly clienteRepo: Repository<Cliente>,
+    @InjectRepository(CuentaCorriente)
+    private readonly cuentaCorrienteRepo: Repository<CuentaCorriente>,
+    @InjectRepository(MovimientoCuentaCorriente)
+    private readonly movimientoCCRepo: Repository<MovimientoCuentaCorriente>,
   ) {}
 
   async resumen(sucursalId: string, query: ReportePosQueryDto) {
@@ -166,6 +178,12 @@ export class ReportesPosService {
   }
 
   async productos(sucursalId: string, query: ReportePosQueryDto) {
+    const estadosVendidos = [
+      EstadoComprobante.COBRADA,
+      EstadoComprobante.EMITIDA,
+      EstadoComprobante.ENTREGADO,
+      EstadoComprobante.ENTREGADO_PARCIAL,
+    ];
     const rows = await this.itemRepo
       .createQueryBuilder('item')
       .innerJoin('item.comprobante', 'comprobante')
@@ -174,20 +192,20 @@ export class ReportesPosService {
       .andWhere('comprobante.tipo = :tipoVenta', {
         tipoVenta: TipoComprobante.VENTA,
       })
-      .andWhere('comprobante.estado = :estado', {
-        estado: EstadoComprobante.COBRADA,
-      })
-      .andWhere('item.producto_id IS NOT NULL')
-      .select('item.producto_id', 'producto_id')
+      .andWhere('comprobante.estado IN (:...estadosVendidos)', { estadosVendidos })
+      .select('COALESCE(item.producto_id, item.descripcion)', 'producto_id')
       .addSelect('COALESCE(producto.nombre, item.descripcion)', 'producto')
       .addSelect('COALESCE(SUM(item.cantidad), 0)', 'cantidad')
       .addSelect('COALESCE(SUM(item.subtotal), 0)', 'total')
       .addSelect('COALESCE(SUM(item.cantidad * producto.precio_costo), 0)', 'costo')
-      .groupBy('item.producto_id')
+      .groupBy('COALESCE(item.producto_id, item.descripcion)')
       .addGroupBy('producto.nombre')
-      .orderBy('cantidad', 'DESC');
+      .addGroupBy('item.descripcion')
+      .orderBy('SUM(item.subtotal)', 'DESC');
 
-    this.aplicarFechas(rows, query, 'comprobante.created_at');
+    if (!query.caja_id) {
+      this.aplicarFechas(rows, query, 'comprobante.created_at');
+    }
     this.aplicarFiltrosVenta(rows, query);
 
     const result = await rows.getRawMany();
@@ -227,7 +245,11 @@ export class ReportesPosService {
   }
 
   async cajas(sucursalId: string, query: ReportePosQueryDto) {
-    const rows = await this.cajaRepo
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20)));
+    const skip = (page - 1) * limit;
+
+    const qb = this.cajaRepo
       .createQueryBuilder('caja')
       .leftJoin(Empleado, 'empleado', 'empleado.id = caja.empleado_id')
       .where('caja.sucursal_id = :sucursalId', { sucursalId })
@@ -245,22 +267,22 @@ export class ReportesPosService {
       .addGroupBy('empleado.nombreCompleto')
       .orderBy('caja.fecha_apertura', 'DESC');
 
-    this.aplicarRangoCajas(rows, query);
-    if (query.caja_id) rows.andWhere('caja.id = :cajaId', { cajaId: query.caja_id });
+    this.aplicarRangoCajas(qb, query);
+    if (query.caja_id) qb.andWhere('caja.id = :cajaId', { cajaId: query.caja_id });
     if (query.empleado_id) {
-      rows.andWhere('caja.empleado_id = :empleadoId', {
-        empleadoId: query.empleado_id,
-      });
+      qb.andWhere('caja.empleado_id = :empleadoId', { empleadoId: query.empleado_id });
     }
 
-    const result = await rows.getRawMany();
+    const total = await qb.getCount();
+    const result = await qb.skip(skip).take(limit).getRawMany();
+
     const cajaIds = result.map((row) => row.caja_id).filter(Boolean);
     const movimientosByCaja = await this.movimientosPorCaja(cajaIds);
     const ventasByCaja = await this.ventasPorCaja(cajaIds);
     const notasByCaja = await this.notasCreditoPorCaja(cajaIds);
     const stockByCaja = await this.stockVendidoPorCaja(cajaIds);
 
-    return result.map((row) => ({
+    const data = result.map((row) => ({
       caja_id: row.caja_id,
       estado: row.estado,
       empleado_id: row.empleado_id,
@@ -287,6 +309,175 @@ export class ReportesPosService {
       monto_final_calculado: this.nullableNumber(row.monto_final_calculado),
       diferencia: this.nullableNumber(row.diferencia),
     }));
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async notasCredito(sucursalId: string, query: ReportePosQueryDto) {
+    const rows = await this.comprobanteRepo
+      .createQueryBuilder('nota')
+      .leftJoin('nota.comprobanteOrigen', 'origen')
+      .leftJoin(Empleado, 'cajero', 'cajero.id = nota.empleado_cajero_id')
+      .leftJoin(Empleado, 'vendedor', 'vendedor.id = nota.empleado_vendedor_id')
+      .where('nota.sucursal_id = :sucursalId', { sucursalId })
+      .andWhere('nota.tipo = :tipo', { tipo: TipoComprobante.NOTA_CREDITO })
+      .andWhere('nota.estado != :anulado', { anulado: EstadoComprobante.ANULADO })
+      .select('nota.id', 'id')
+      .addSelect('nota.numero', 'numero')
+      .addSelect('nota.estado', 'estado')
+      .addSelect('nota.total', 'total')
+      .addSelect('nota.observaciones', 'observaciones')
+      .addSelect('nota.created_at', 'fecha')
+      .addSelect('nota.cliente_id', 'cliente_id')
+      .addSelect('nota.caja_id', 'caja_id')
+      .addSelect('nota.comprobante_origen_id', 'comprobante_origen_id')
+      .addSelect('origen.numero', 'venta_origen_numero')
+      .addSelect('origen.tipo', 'venta_origen_tipo')
+      .addSelect('COALESCE(cajero.nombreCompleto, vendedor.nombreCompleto)', 'empleado')
+      .orderBy('nota.created_at', 'DESC');
+
+    this.aplicarFechas(rows, query, 'nota.created_at');
+    if (query.caja_id) rows.andWhere('nota.caja_id = :cajaId', { cajaId: query.caja_id });
+    if (query.empleado_id) {
+      rows.andWhere(
+        '(nota.empleado_cajero_id = :eid OR nota.empleado_vendedor_id = :eid)',
+        { eid: query.empleado_id },
+      );
+    }
+
+    const result = await rows.getRawMany();
+
+    // Cargar items de todas las notas en una sola query
+    const notaIds = result.map((r) => r.id);
+    const items = notaIds.length
+      ? await this.itemRepo
+          .createQueryBuilder('item')
+          .leftJoin(Producto, 'producto', 'producto.id = item.producto_id')
+          .where('item.comprobante_id IN (:...ids)', { ids: notaIds })
+          .select('item.comprobante_id', 'comprobante_id')
+          .addSelect('item.descripcion', 'descripcion')
+          .addSelect('item.cantidad', 'cantidad')
+          .addSelect('item.precio_unitario', 'precio_unitario')
+          .addSelect('item.subtotal', 'subtotal')
+          .getRawMany()
+      : [];
+
+    const itemsByNota = new Map<string, typeof items>();
+    for (const item of items) {
+      const lista = itemsByNota.get(item.comprobante_id) ?? [];
+      lista.push(item);
+      itemsByNota.set(item.comprobante_id, lista);
+    }
+
+    return result.map((row) => ({
+      id: row.id,
+      numero: row.numero,
+      estado: row.estado,
+      fecha: row.fecha,
+      cliente_id: row.cliente_id,
+      caja_id: row.caja_id,
+      comprobante_origen_id: row.comprobante_origen_id,
+      venta_origen_numero: row.venta_origen_numero ?? null,
+      venta_origen_tipo: row.venta_origen_tipo ?? null,
+      empleado: row.empleado ?? 'Sin empleado',
+      observaciones: row.observaciones ?? null,
+      total: this.number(row.total),
+      items: (itemsByNota.get(row.id) ?? []).map((item) => ({
+        descripcion: item.descripcion,
+        cantidad: this.number(item.cantidad),
+        precio_unitario: this.number(item.precio_unitario),
+        subtotal: this.number(item.subtotal),
+      })),
+    }));
+  }
+
+  async cobrosPendientes(sucursalId: string, query: ReportePosQueryDto) {
+    // 1.- Cuentas corrientes con saldo > 0 (cliente debe)
+    const cuentas = await this.cuentaCorrienteRepo
+      .createQueryBuilder('cc')
+      .innerJoin(Cliente, 'cliente', 'cliente.id = cc.cliente_id')
+      .where('cc.saldo > 0')
+      .andWhere('cc.activa = true')
+      .andWhere('cliente.activo = true')
+      .select('cc.id', 'cc_id')
+      .addSelect('cc.cliente_id', 'cliente_id')
+      .addSelect('cc.saldo', 'saldo')
+      .addSelect('cc.limite_credito', 'limite_credito')
+      .addSelect(
+        `CONCAT(COALESCE(cliente.razon_social, ''), ' ', COALESCE(cliente.nombre, ''), ' ', COALESCE(cliente.apellido, ''))`,
+        'cliente_nombre',
+      )
+      .addSelect('cliente.email', 'email')
+      .addSelect('cliente.telefono', 'telefono')
+      .orderBy('cc.saldo', 'DESC')
+      .getRawMany();
+
+    if (!cuentas.length) {
+      return { total_clientes: 0, total_deuda: 0, clientes: [] };
+    }
+
+    const ccIds = cuentas.map((c) => c.cc_id);
+
+    // 2.- Último CARGO y último PAGO por cuenta corriente (movimientos pendientes)
+    const cargosPendientes = await this.movimientoCCRepo
+      .createQueryBuilder('mov')
+      .where('mov.cuenta_corriente_id IN (:...ccIds)', { ccIds })
+      .andWhere('mov.tipo = :tipo', { tipo: TipoMovimientoCC.CARGO })
+      .select('mov.cuenta_corriente_id', 'cc_id')
+      .addSelect('COUNT(mov.id)', 'cantidad_cargos')
+      .addSelect('COALESCE(SUM(mov.monto), 0)', 'total_cargos')
+      .addSelect('MIN(mov.fecha)', 'cargo_mas_antiguo')
+      .addSelect('MAX(mov.fecha_vencimiento)', 'proximo_vencimiento')
+      .groupBy('mov.cuenta_corriente_id')
+      .getRawMany();
+
+    const pagos = await this.movimientoCCRepo
+      .createQueryBuilder('mov')
+      .where('mov.cuenta_corriente_id IN (:...ccIds)', { ccIds })
+      .andWhere('mov.tipo IN (:...tipos)', {
+        tipos: [TipoMovimientoCC.PAGO, TipoMovimientoCC.NOTA_CREDITO],
+      })
+      .select('mov.cuenta_corriente_id', 'cc_id')
+      .addSelect('COALESCE(SUM(ABS(mov.monto)), 0)', 'total_pagado')
+      .addSelect('MAX(mov.fecha)', 'ultimo_pago')
+      .groupBy('mov.cuenta_corriente_id')
+      .getRawMany();
+
+    const cargosMap = new Map(cargosPendientes.map((r) => [r.cc_id, r]));
+    const pagosMap = new Map(pagos.map((r) => [r.cc_id, r]));
+
+    const clientes = cuentas.map((c) => {
+      const cargo = cargosMap.get(c.cc_id);
+      const pago = pagosMap.get(c.cc_id);
+      const saldo = this.number(c.saldo);
+      const limiteCredito = this.number(c.limite_credito);
+      return {
+        cliente_id: c.cliente_id,
+        cliente: c.cliente_nombre?.trim() || 'Sin nombre',
+        email: c.email ?? null,
+        telefono: c.telefono ?? null,
+        saldo,
+        limite_credito: limiteCredito,
+        limite_disponible: limiteCredito > 0 ? this.round(limiteCredito - saldo) : null,
+        cantidad_cargos: Number(cargo?.cantidad_cargos ?? 0),
+        total_cargos: this.number(cargo?.total_cargos),
+        total_pagado: this.number(pago?.total_pagado),
+        cargo_mas_antiguo: cargo?.cargo_mas_antiguo ?? null,
+        ultimo_pago: pago?.ultimo_pago ?? null,
+        proximo_vencimiento: cargo?.proximo_vencimiento ?? null,
+      };
+    });
+
+    const totalDeuda = this.round(clientes.reduce((sum, c) => sum + c.saldo, 0));
+
+    return {
+      total_clientes: clientes.length,
+      total_deuda: totalDeuda,
+      clientes,
+    };
   }
 
   async stock(sucursalId: string, query: ReportePosQueryDto) {
@@ -316,13 +507,17 @@ export class ReportesPosService {
   }
 
   private baseVentas(sucursalId: string, query: ReportePosQueryDto) {
+    const estadosVendidos = [
+      EstadoComprobante.COBRADA,
+      EstadoComprobante.EMITIDA,
+      EstadoComprobante.ENTREGADO,
+      EstadoComprobante.ENTREGADO_PARCIAL,
+    ];
     const qb = this.baseComprobantes(sucursalId, query)
       .andWhere('comprobante.tipo = :tipoVenta', {
         tipoVenta: TipoComprobante.VENTA,
       })
-      .andWhere('comprobante.estado = :estadoVenta', {
-        estadoVenta: EstadoComprobante.COBRADA,
-      });
+      .andWhere('comprobante.estado IN (:...estadosVendidos)', { estadosVendidos });
     this.aplicarFiltrosVenta(qb, query);
     return qb;
   }
@@ -579,5 +774,63 @@ export class ReportesPosService {
 
   private round(value: number): number {
     return Number(Number(value).toFixed(2));
+  }
+
+  async diferenciasCaja(sucursalId: string, query: ReportePosQueryDto) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20)));
+    const skip = (page - 1) * limit;
+
+    const qb = this.cajaRepo
+      .createQueryBuilder('caja')
+      .leftJoin(Empleado, 'empleado', 'empleado.id = caja.empleado_id')
+      .where('caja.sucursal_id = :sucursalId', { sucursalId })
+      .andWhere('caja.estado = :cerrada', { cerrada: EstadoCaja.CERRADA })
+      .andWhere('caja.diferencia IS NOT NULL')
+      .andWhere('caja.diferencia != 0')
+      .select('caja.id', 'caja_id')
+      .addSelect('COALESCE(empleado.nombreCompleto, "Sin empleado")', 'empleado')
+      .addSelect('caja.empleado_id', 'empleado_id')
+      .addSelect('caja.fecha_apertura', 'fecha_apertura')
+      .addSelect('caja.fecha_cierre', 'fecha_cierre')
+      .addSelect('caja.monto_inicial', 'monto_inicial')
+      .addSelect('caja.monto_final_declarado', 'monto_final_declarado')
+      .addSelect('caja.monto_final_calculado', 'monto_final_calculado')
+      .addSelect('caja.diferencia', 'diferencia')
+      .groupBy('caja.id')
+      .addGroupBy('empleado.nombreCompleto')
+      .orderBy('ABS(caja.diferencia)', 'DESC');
+
+    this.aplicarRangoCajas(qb, query);
+    if (query.empleado_id) {
+      qb.andWhere('caja.empleado_id = :empleadoId', { empleadoId: query.empleado_id });
+    }
+
+    const total = await qb.getCount();
+    const rows = await qb.skip(skip).take(limit).getRawMany();
+
+    const data = rows.map((row) => ({
+      caja_id: row.caja_id,
+      empleado: row.empleado,
+      empleado_id: row.empleado_id,
+      fecha_apertura: row.fecha_apertura,
+      fecha_cierre: row.fecha_cierre,
+      monto_inicial: this.number(row.monto_inicial),
+      monto_final_declarado: this.nullableNumber(row.monto_final_declarado),
+      monto_final_calculado: this.nullableNumber(row.monto_final_calculado),
+      diferencia: this.nullableNumber(row.diferencia),
+    }));
+
+    const resumen = {
+      total_diferencias: rows.reduce((acc, r) => acc + Math.abs(this.number(r.diferencia)), 0),
+      diferencias_positivas: rows.filter((r) => this.number(r.diferencia) > 0).length,
+      diferencias_negativas: rows.filter((r) => this.number(r.diferencia) < 0).length,
+    };
+
+    return {
+      data,
+      resumen,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 }

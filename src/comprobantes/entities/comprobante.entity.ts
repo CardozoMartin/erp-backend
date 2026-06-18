@@ -88,6 +88,9 @@ export class Comprobante {
   @Column({ type: 'varchar', length: 36, nullable: true })
   empleado_despachador_id!: string | null;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  tomada_por_cajero_id!: string | null;
+
   @ManyToOne(() => Comprobante, { nullable: true })
   @JoinColumn({ name: 'comprobante_origen_id' })
   comprobanteOrigen!: Comprobante | null;

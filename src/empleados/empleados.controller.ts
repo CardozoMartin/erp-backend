@@ -45,10 +45,11 @@ export class EmpleadosController {
   @Get()
   @RequierePermiso('empleados.ver')
   findAll(
+    @SucursalActiva() sucursalId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '30',
   ) {
-    return this.empleadosService.findAll(Number(page), Number(limit));
+    return this.empleadosService.findAll(sucursalId, Number(page), Number(limit));
   }
 
   @Get(':id')
@@ -87,6 +88,16 @@ export class EmpleadosController {
       req.user?.id,
       sucursalId,
     );
+  }
+
+  @Patch(':id/reset-password')
+  @RequierePermiso('empleados.editar')
+  resetPassword(
+    @Param('id') id: string,
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.empleadosService.resetPassword(id, req.user?.id, sucursalId);
   }
 
   @Delete(':id')

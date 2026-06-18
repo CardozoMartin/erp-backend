@@ -14,6 +14,7 @@ import {
   AbrirCajaDto,
   CajaQueryDto,
   CerrarCajaDto,
+  ConsumoInternoCajaDto,
   RegistrarMovimientoCajaDto,
 } from './dto/create-caja.dto';
 import { CajaService } from './caja.service';
@@ -43,6 +44,12 @@ export class CajaController {
   @Get('abierta')
   findAbierta(@SucursalActiva() sucursalId: string, @Request() req) {
     return this.cajaService.findAbiertaPorEmpleado(sucursalId, req.user.id);
+  }
+
+  @Get('abiertas')
+  @RequierePermiso('caja.cobrar')
+  findAbiertas(@SucursalActiva() sucursalId: string) {
+    return this.cajaService.findAll(sucursalId, { soloAbiertas: true });
   }
 
   @Get()
@@ -115,5 +122,16 @@ export class CajaController {
     @Body() dto: CerrarCajaDto,
   ) {
     return this.cajaService.cerrar(id, sucursalId, req.user.id, dto);
+  }
+
+  @Post(':id/consumo-interno')
+  @RequierePermiso('caja.movimientos.crear')
+  consumoInterno(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: ConsumoInternoCajaDto,
+  ) {
+    return this.cajaService.consumoInterno(id, sucursalId, req.user.id, dto);
   }
 }

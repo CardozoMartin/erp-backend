@@ -131,11 +131,110 @@ export class ClientesService {
     }
   }
 
-  async findAll(): Promise<Cliente[]> {
+  async findAll(activo?: boolean): Promise<Cliente[]> {
     return this.clienteRepo.find({
+      where: activo !== undefined ? { activo } : {},
       relations: ['cuentaCorriente', 'cuentaCorriente.planPago'],
       order: { nombre: 'ASC' },
     });
+  }
+
+  async toggleActivo(
+    id: string,
+    empleadoId?: string | null,
+    sucursalId?: string | null,
+  ): Promise<Cliente> {
+    const cliente = await this.findOne(id);
+    const antes = JSON.parse(JSON.stringify(cliente));
+    cliente.activo = !cliente.activo;
+    await this.clienteRepo.save(cliente);
+    await this.auditoriaService.registrar({
+      modulo: 'clientes',
+      accion: cliente.activo ? 'ACTIVAR_CLIENTE' : 'DESACTIVAR_CLIENTE',
+      entidad: 'cliente',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId ?? null,
+      descripcion: `Cliente ${cliente.activo ? 'activado' : 'desactivado'}: ${cliente.razon_social || cliente.nombre}`,
+      antes,
+      despues: cliente as any,
+    });
+    return this.findOne(id);
+  }
+
+  async toggleCuentaCorriente(
+    id: string,
+    empleadoId?: string | null,
+    sucursalId?: string | null,
+  ): Promise<CuentaCorriente> {
+    const cliente = await this.findOne(id);
+    if (!cliente.cuentaCorriente)
+      throw new BadRequestException('El cliente no tiene cuenta corriente');
+    const cc = cliente.cuentaCorriente;
+    cc.activa = !cc.activa;
+    await this.ccRepo.save(cc);
+    await this.auditoriaService.registrar({
+      modulo: 'clientes',
+      accion: cc.activa ? 'ACTIVAR_CUENTA_CORRIENTE' : 'SUSPENDER_CUENTA_CORRIENTE',
+      entidad: 'cliente',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId ?? null,
+      descripcion: `Cuenta corriente ${cc.activa ? 'activada' : 'suspendida'} para: ${cliente.razon_social || cliente.nombre}`,
+    });
+    return cc;
+  }
+
+  async setBloqueo(
+    id: string,
+    bloqueado: boolean,
+    razon: string | null,
+    empleadoId?: string | null,
+    sucursalId?: string | null,
+  ): Promise<Cliente> {
+    const cliente = await this.findOne(id);
+    const antes = JSON.parse(JSON.stringify(cliente));
+    cliente.bloqueado = bloqueado;
+    cliente.razon_bloqueo = bloqueado ? (razon ?? null) : null;
+    await this.clienteRepo.save(cliente);
+    await this.auditoriaService.registrar({
+      modulo: 'clientes',
+      accion: bloqueado ? 'BLOQUEAR_CREDITO_CLIENTE' : 'DESBLOQUEAR_CREDITO_CLIENTE',
+      entidad: 'cliente',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId ?? null,
+      descripcion: bloqueado
+        ? `Crédito bloqueado (${razon ?? 'sin razón'}): ${cliente.razon_social || cliente.nombre}`
+        : `Crédito desbloqueado: ${cliente.razon_social || cliente.nombre}`,
+      antes,
+      despues: cliente as any,
+    });
+    return this.findOne(id);
+  }
+
+  async setAccionLegal(
+    id: string,
+    accion_legal: boolean,
+    empleadoId?: string | null,
+    sucursalId?: string | null,
+  ): Promise<Cliente> {
+    const cliente = await this.findOne(id);
+    const antes = JSON.parse(JSON.stringify(cliente));
+    cliente.accion_legal = accion_legal;
+    await this.clienteRepo.save(cliente);
+    await this.auditoriaService.registrar({
+      modulo: 'clientes',
+      accion: accion_legal ? 'MARCAR_ACCION_LEGAL' : 'QUITAR_ACCION_LEGAL',
+      entidad: 'cliente',
+      entidad_id: id,
+      empleado_id: empleadoId ?? null,
+      sucursal_id: sucursalId ?? null,
+      descripcion: `Acción legal ${accion_legal ? 'marcada' : 'removida'}: ${cliente.razon_social || cliente.nombre}`,
+      antes,
+      despues: cliente as any,
+    });
+    return this.findOne(id);
   }
 
   async findOne(id: string): Promise<Cliente> {
@@ -311,6 +410,8 @@ export class ClientesService {
     sucursalId?: string | null,
   ): Promise<MovimientoCuentaCorriente> {
     const cliente = await this.findOne(clienteId);
+    if (!cliente.activo)
+      throw new BadRequestException('El cliente está inactivo y no puede operar');
     if (!cliente.cuentaCorriente)
       throw new BadRequestException('El cliente no tiene cuenta corriente');
     if (!cliente.cuentaCorriente.activa)
@@ -369,6 +470,12 @@ export class ClientesService {
     sucursalId?: string | null,
   ): Promise<MovimientoCuentaCorriente> {
     const cliente = await this.findOne(clienteId);
+    if (!cliente.activo)
+      throw new BadRequestException('El cliente está inactivo y no puede operar');
+    if (cliente.bloqueado)
+      throw new BadRequestException(`Crédito bloqueado: ${cliente.razon_bloqueo ?? 'contactar administración'}`);
+    if (cliente.accion_legal)
+      throw new BadRequestException('El cliente tiene una acción legal activa y no puede operar a crédito');
     if (!cliente.cuentaCorriente) {
       throw new BadRequestException('El cliente no tiene cuenta corriente');
     }

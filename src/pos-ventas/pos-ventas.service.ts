@@ -19,6 +19,7 @@ import {
   CobrarVentaPosDto,
   CrearVentaPosDto,
   DevolverVentaPosDto,
+  EditarVentaPosDto,
   EmitirDesdeVentaDto,
   VentaCuentaCorrientePosDto,
   VentaCompletaPosDto,
@@ -46,15 +47,24 @@ export class PosVentasService {
     const config = await this.configuracionService.crearPorDefecto(sucursalId);
     this.validarModoPermiteVentaPendiente(config.modo_pos);
 
-    // 1.- En modo caja centralizada/con despacho se requiere caja abierta
+    // 1.- Validar caja según el modo POS
     if (
       config.modo_pos === ModoPOS.CAJA_CENTRALIZADA ||
       config.modo_pos === ModoPOS.CON_DESPACHO
     ) {
+      // Flujo separado: solo se necesita que alguna caja esté abierta en la sucursal
       const hayCajaAbierta = await this.cajaService.hayCajaAbiertaEnSucursal(sucursalId);
       if (!hayCajaAbierta) {
         throw new BadRequestException(
           'No hay una caja abierta en esta sucursal para recibir ventas pendientes',
+        );
+      }
+    } else {
+      // SIMPLE y MULTICAJA: el vendedor también cobra, debe tener su propia caja abierta
+      const cajaEmpleado = await this.cajaService.findAbiertaPorEmpleado(sucursalId, empleadoId);
+      if (!cajaEmpleado) {
+        throw new BadRequestException(
+          'Debes tener una caja abierta para poder crear ventas',
         );
       }
     }
@@ -207,6 +217,32 @@ export class PosVentasService {
     return { venta: cobrada };
   }
 
+  async editarVenta(
+    id: string,
+    sucursalId: string,
+    empleadoId: string,
+    dto: EditarVentaPosDto,
+  ): Promise<Comprobante> {
+    const venta = await this.queryService.validarVenta(id, sucursalId);
+    if (![EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(venta.estado)) {
+      throw new BadRequestException('Solo se pueden editar ventas en borrador o pendientes de cobro');
+    }
+
+    const actualizada = await this.comprobantesService.update(id, sucursalId, dto, empleadoId);
+    await this.auditoriaService.registrar({
+      modulo: 'pos',
+      accion: 'EDITAR_VENTA',
+      entidad: 'comprobante',
+      entidad_id: id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion: `Venta editada ${venta.numero}`,
+      antes: { total: Number(venta.total), cantidad_items: venta.items?.length ?? 0 },
+      despues: { total: Number(actualizada.total), cantidad_items: actualizada.items?.length ?? 0 },
+    });
+    return actualizada;
+  }
+
   async cobrarVenta(
     id: string,
     sucursalId: string,
@@ -342,6 +378,40 @@ export class PosVentasService {
 
   pendientesCobro(sucursalId: string) {
     return this.queryService.pendientesCobro(sucursalId);
+  }
+
+  async asignarCaja(
+    id: string,
+    sucursalId: string,
+    empleadoId: string,
+    cajaId: string,
+  ): Promise<Comprobante> {
+    const venta = await this.queryService.validarVenta(id, sucursalId);
+    if (![EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(venta.estado)) {
+      throw new BadRequestException('Solo se puede asignar caja a ventas pendientes de cobro');
+    }
+    await this.cajaService.findOne(cajaId, sucursalId);
+    const actualizada = await this.comprobantesService.asignarCaja(id, sucursalId, cajaId);
+    await this.auditoriaService.registrar({
+      modulo: 'pos',
+      accion: 'ASIGNAR_CAJA',
+      entidad: 'comprobante',
+      entidad_id: id,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      descripcion: `Venta ${venta.numero} asignada a caja ${cajaId}`,
+      antes: { caja_id: venta.caja_id },
+      despues: { caja_id: cajaId },
+    });
+    return actualizada;
+  }
+
+  async tomarVenta(id: string, sucursalId: string, empleadoId: string): Promise<Comprobante> {
+    return this.comprobantesService.tomarParaCobro(id, sucursalId, empleadoId);
+  }
+
+  async liberarVenta(id: string, sucursalId: string, empleadoId: string): Promise<void> {
+    return this.comprobantesService.liberarCobro(id, sucursalId, empleadoId);
   }
 
   findOne(id: string, sucursalId: string, empleadoId?: string) {

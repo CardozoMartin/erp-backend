@@ -71,6 +71,11 @@ export const frontRoutes: FrontRouteDefinition[] = [
     requiredAny: ['reportes.ver', 'reportes.ventas', 'reportes.caja'],
   },
   {
+    path: '/reportes-contables',
+    label: 'Reporte contable',
+    requiredAny: ['reportes.ver', 'reportes.ventas', 'reportes.caja'],
+  },
+  {
     path: '/productos',
     label: 'Productos',
     requiredAny: ['productos.ver'],

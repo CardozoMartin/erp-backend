@@ -4,6 +4,9 @@ import { Caja } from 'src/caja/entities/caja.entity';
 import { MovimientoCaja } from 'src/caja/entities/movimiento-caja.entity';
 import { ComprobanteItem } from 'src/comprobantes/entities/comprobante-item.entity';
 import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
+import { Cliente } from 'src/clientes/entities/cliente.entity';
+import { CuentaCorriente } from 'src/clientes/entities/cuenta-corriente.entity';
+import { MovimientoCuentaCorriente } from 'src/clientes/entities/movimiento-cuenta-corriente.entity';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { Producto } from 'src/producto/entities/producto.entity';
@@ -23,6 +26,9 @@ import { ReportesPosService } from './reportes-pos.service';
       Caja,
       MovimientoCaja,
       StockMovimiento,
+      Cliente,
+      CuentaCorriente,
+      MovimientoCuentaCorriente,
     ]),
     ExcelModule,
   ],

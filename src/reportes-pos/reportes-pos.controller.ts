@@ -69,6 +69,33 @@ export class ReportesPosController {
     return this.reportesPosService.cajas(sucursalId, query);
   }
 
+  @Get('diferencias-caja')
+  @RequierePermiso('reportes.caja')
+  diferenciasCaja(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+  ) {
+    return this.reportesPosService.diferenciasCaja(sucursalId, query);
+  }
+
+  @Get('cobros-pendientes')
+  @RequierePermiso('reportes.ver')
+  cobrosPendientes(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+  ) {
+    return this.reportesPosService.cobrosPendientes(sucursalId, query);
+  }
+
+  @Get('notas-credito')
+  @RequierePermiso('reportes.ver')
+  notasCredito(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+  ) {
+    return this.reportesPosService.notasCredito(sucursalId, query);
+  }
+
   @Get('stock')
   @RequierePermiso('reportes.ver')
   stock(
@@ -171,8 +198,8 @@ export class ReportesPosController {
     @Query() query: ReportePosQueryDto,
     @Res() res: Response,
   ) {
-    // 1.- Obtener datos del reporte
-    const datos = await this.reportesPosService.cajas(sucursalId, query);
+    // 1.- Obtener datos del reporte (sin límite de paginación para el export)
+    const { data: datos } = await this.reportesPosService.cajas(sucursalId, { ...query, limit: 1000, page: 1 });
     const periodo = `${query.desde ?? ''} — ${query.hasta ?? ''}`;
     // 2.- Generar buffer Excel
     const buffer = await this.excelService.cajas(datos, periodo);
@@ -180,6 +207,74 @@ export class ReportesPosController {
     res.set({
       'Content-Type': XLSX_MIME,
       'Content-Disposition': `attachment; filename="cajas.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get('exportar/cobros-pendientes')
+  @RequierePermiso('reportes.exportar')
+  async exportarCobrosPendientes(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+    @Res() res: Response,
+  ) {
+    const datos = await this.reportesPosService.cobrosPendientes(sucursalId, query);
+    const buffer = await this.excelService.cobrosPendientes(datos);
+    res.set({
+      'Content-Type': XLSX_MIME,
+      'Content-Disposition': `attachment; filename="cobros-pendientes.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get('exportar/notas-credito')
+  @RequierePermiso('reportes.exportar')
+  async exportarNotasCredito(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+    @Res() res: Response,
+  ) {
+    const datos = await this.reportesPosService.notasCredito(sucursalId, query);
+    const periodo = `${query.desde ?? ''} — ${query.hasta ?? ''}`;
+    const buffer = await this.excelService.notasCredito(datos, periodo);
+    res.set({
+      'Content-Type': XLSX_MIME,
+      'Content-Disposition': `attachment; filename="notas-credito.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get('exportar/reporte-contable')
+  @RequierePermiso('reportes.ver')
+  async exportarReporteContable(
+    @SucursalActiva() sucursalId: string,
+    @Query() query: ReportePosQueryDto,
+    @Res() res: Response,
+  ) {
+    const periodo = `${query.desde ?? ''} — ${query.hasta ?? ''}`;
+    const [resumen, ventasPorDia, mediosPago, productos, empleados, deudores] = await Promise.all([
+      this.reportesPosService.resumen(sucursalId, query),
+      this.reportesPosService.ventasPorDia(sucursalId, query),
+      this.reportesPosService.mediosPago(sucursalId, query),
+      this.reportesPosService.productos(sucursalId, query),
+      this.reportesPosService.empleados(sucursalId, query),
+      this.reportesPosService.cobrosPendientes(sucursalId, query),
+    ]);
+    const buffer = await this.excelService.reporteContable({
+      periodo,
+      resumen,
+      ventasPorDia,
+      mediosPago,
+      productos,
+      empleados,
+      deudores,
+    });
+    res.set({
+      'Content-Type': XLSX_MIME,
+      'Content-Disposition': `attachment; filename="reporte-contable-${query.desde ?? 'periodo'}.xlsx"`,
       'Content-Length': buffer.length,
     });
     res.end(buffer);

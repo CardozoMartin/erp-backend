@@ -17,8 +17,8 @@ export class StockController {
 
   @Get()
   @RequierePermiso('stock.ver')
-  findAll() {
-    return this.stockService.findAll();
+  findAll(@SucursalActiva() sucursalId: string) {
+    return this.stockService.findAll(sucursalId);
   }
 
   // Alertas de stock mínimo — rutas antes de :id para no ser capturadas como UUID
@@ -39,6 +39,15 @@ export class StockController {
   @RequierePermiso('stock.ver')
   findByProducto(@Param('productoId') productoId: string) {
     return this.stockService.findByProducto(productoId);
+  }
+
+  @Get('producto/:productoId/otras-sucursales')
+  @RequierePermiso('stock.ver')
+  stockOtrasSucursales(
+    @Param('productoId') productoId: string,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.stockService.stockOtrasSucursales(productoId, sucursalId);
   }
 
   @Get(':id')

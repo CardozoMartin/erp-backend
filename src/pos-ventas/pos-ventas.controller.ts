@@ -1,11 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
+import { EstadoComprobante, TipoComprobante } from 'src/comprobantes/entities/comprobante.entity';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
+  AsignarCajaDto,
   CancelarVentaPosDto,
   CobrarVentaPosDto,
   CrearVentaPosDto,
   DevolverVentaPosDto,
+  EditarVentaPosDto,
   EmitirDesdeVentaDto,
   VentaCuentaCorrientePosDto,
   VentaCompletaPosDto,
@@ -74,15 +77,23 @@ export class PosVentasController {
     @Query('desde') desde?: string,
     @Query('hasta') hasta?: string,
     @Query('empleado_id') empleadoId?: string,
+    @Query('tipo') tipo?: TipoComprobante,
+    @Query('estado') estado?: EstadoComprobante,
+    @Query('cliente_id') clienteId?: string,
+    @Query('numero') numero?: string,
   ) {
     const puedeVerTodas = this.puedeVerTodasLasVentas(req);
-    if (page || limit || desde || hasta || empleadoId) {
+    if (page || limit || desde || hasta || empleadoId || tipo || estado || clienteId || numero) {
       return this.posVentasService.findAllPaginado(sucursalId, {
         page: Number(page ?? 1),
         limit: Number(limit ?? 50),
         desde,
         hasta,
         empleadoId: puedeVerTodas ? empleadoId : req.user.id,
+        tipo,
+        estado,
+        cliente_id: clienteId,
+        numero,
       });
     }
 
@@ -127,6 +138,17 @@ export class PosVentasController {
     );
   }
 
+  @Patch(':id')
+  @RequierePermiso('ventas.crear')
+  editar(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: EditarVentaPosDto,
+  ) {
+    return this.posVentasService.editarVenta(id, sucursalId, req.user.id, dto);
+  }
+
   @Post(':id/cobrar')
   @RequierePermiso('caja.cobrar')
   cobrar(
@@ -158,6 +180,37 @@ export class PosVentasController {
     @Body() dto: CancelarVentaPosDto,
   ) {
     return this.posVentasService.cancelarVenta(id, sucursalId, req.user.id, dto);
+  }
+
+  @Patch(':id/tomar')
+  @RequierePermiso('caja.cobrar')
+  tomarVenta(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+  ) {
+    return this.posVentasService.tomarVenta(id, sucursalId, req.user.id);
+  }
+
+  @Patch(':id/liberar')
+  @RequierePermiso('caja.cobrar')
+  liberarVenta(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+  ) {
+    return this.posVentasService.liberarVenta(id, sucursalId, req.user.id);
+  }
+
+  @Patch(':id/asignar-caja')
+  @RequierePermiso('caja.cobrar')
+  asignarCaja(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Body() dto: AsignarCajaDto,
+  ) {
+    return this.posVentasService.asignarCaja(id, sucursalId, req.user.id, dto.caja_id);
   }
 
   @Post(':id/devolver')

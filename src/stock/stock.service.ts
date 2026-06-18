@@ -1,14 +1,17 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, MoreThan, Not, Repository } from 'typeorm';
 import { Producto } from '../producto/entities/producto.entity';
 import { UnidadVenta } from '../producto/entities/producto.entity';
 import { Stock } from './entities/stock.entity';
 import { Variante } from '../variante/entities/variante.entity';
+import { Sucursal } from '../sucursal/entities/sucursal.entity';
+import { ConfiguracionSucursal } from '../configuracion/entities/configuracion.entity';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
 import { AjustarStockDto } from './dto/create-stock.dto';
@@ -22,6 +25,10 @@ export class StockService {
     private readonly productoRepo: Repository<Producto>,
     @InjectRepository(Variante)
     private readonly varianteRepo: Repository<Variante>,
+    @InjectRepository(Sucursal)
+    private readonly sucursalRepo: Repository<Sucursal>,
+    @InjectRepository(ConfiguracionSucursal)
+    private readonly configuracionRepo: Repository<ConfiguracionSucursal>,
   ) {}
 
   private validateWholeUnitStock(
@@ -89,8 +96,11 @@ export class StockService {
     return this.stockRepo.save(stock);
   }
 
-  async findAll(): Promise<Stock[]> {
-    return this.stockRepo.find({ relations: ['producto', 'variante'] });
+  async findAll(sucursalId: string): Promise<Stock[]> {
+    return this.stockRepo.find({
+      where: { sucursal_id: sucursalId },
+      relations: ['producto', 'variante'],
+    });
   }
 
   async findByProducto(productoId: string): Promise<Stock[]> {
@@ -173,5 +183,38 @@ export class StockService {
     }
 
     return qb.getCount();
+  }
+
+  async stockOtrasSucursales(
+    productoId: string,
+    sucursalActivaId: string,
+  ): Promise<{ sucursal_id: string; nombre: string; cantidad: number; variante: string | null }[]> {
+    const config = await this.configuracionRepo.findOne({
+      where: { sucursal_id: sucursalActivaId },
+    });
+    if (!config?.consulta_stock_otras_sucursales) {
+      throw new ForbiddenException('La consulta de stock en otras sucursales no está habilitada');
+    }
+
+    const stocks = await this.stockRepo.find({
+      where: {
+        producto_id: productoId,
+        sucursal_id: Not(sucursalActivaId),
+      },
+      relations: ['variante'],
+    });
+
+    if (!stocks.length) return [];
+
+    const sucursalIds = [...new Set(stocks.map((s) => s.sucursal_id).filter(Boolean) as string[])];
+    const sucursales = await this.sucursalRepo.findByIds(sucursalIds);
+    const sucursalesById = new Map(sucursales.map((s) => [s.id, s]));
+
+    return stocks.map((stock) => ({
+      sucursal_id: stock.sucursal_id ?? '',
+      nombre: sucursalesById.get(stock.sucursal_id ?? '')?.nombre ?? 'Otra sucursal',
+      cantidad: Number(stock.cantidad),
+      variante: stock.variante?.sku ?? null,
+    }));
   }
 }

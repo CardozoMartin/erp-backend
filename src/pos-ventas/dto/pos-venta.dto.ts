@@ -1,4 +1,4 @@
-import { OmitType } from '@nestjs/mapped-types';
+import { OmitType, PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -61,6 +61,15 @@ export class CancelarVentaPosDto {
 export class DevolverVentaPosDto extends OmitType(CreateNotaCreditoDto, [
   'comprobante_origen_id',
 ] as const) {}
+
+export class EditarVentaPosDto extends PartialType(
+  OmitType(CreateComprobanteDto, ['tipo', 'estado'] as const),
+) {}
+
+export class AsignarCajaDto {
+  @IsUUID()
+  caja_id!: string;
+}
 
 export class EmitirDesdeVentaDto {
   @IsUUID()

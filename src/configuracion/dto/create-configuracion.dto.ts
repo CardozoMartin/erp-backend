@@ -154,4 +154,8 @@ export class CreateConfiguracionDto {
   @IsOptional()
   @IsBoolean()
   mostrar_datos_fiscales?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  consulta_stock_otras_sucursales?: boolean;
 }

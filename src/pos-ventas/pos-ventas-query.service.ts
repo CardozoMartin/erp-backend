@@ -43,9 +43,13 @@ export class PosVentasQueryService {
       desde?: string;
       hasta?: string;
       empleadoId?: string;
+      tipo?: TipoComprobante;
+      estado?: EstadoComprobante;
+      cliente_id?: string;
+      numero?: string;
     },
   ): Promise<{
-    data: Comprobante[];
+    data: (Comprobante & { notasCredito: Comprobante[] })[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const page = Math.max(1, Number(filtros.page || 1));
@@ -53,29 +57,89 @@ export class PosVentasQueryService {
     const desde = filtros.desde ? new Date(`${filtros.desde}T00:00:00`) : null;
     const hasta = filtros.hasta ? new Date(`${filtros.hasta}T23:59:59.999`) : null;
 
+    // Obtener todas las ventas (y otros tipos si se filtró por tipo)
+    const tipoBase = filtros.tipo ?? TipoComprobante.VENTA;
     let ventas = await this.findAll(sucursalId, filtros.empleadoId);
+
+    // Si el tipo solicitado no es VENTA, traemos también esos comprobantes
+    if (filtros.tipo && filtros.tipo !== TipoComprobante.VENTA) {
+      const otros = await this.comprobantesService.findAll(sucursalId, filtros.tipo);
+      ventas = otros;
+      if (filtros.empleadoId) {
+        ventas = ventas.filter(
+          (v) =>
+            v.empleado_vendedor_id === filtros.empleadoId ||
+            v.empleado_cajero_id === filtros.empleadoId,
+        );
+      }
+    }
+
     ventas = ventas.filter((venta) => {
       const fecha = new Date(venta.created_at);
       if (desde && fecha < desde) return false;
       if (hasta && fecha > hasta) return false;
+      if (filtros.estado && venta.estado !== filtros.estado) return false;
+      if (filtros.cliente_id && venta.cliente_id !== filtros.cliente_id) return false;
+      if (filtros.numero) {
+        const termino = filtros.numero.toLowerCase();
+        if (!venta.numero?.toLowerCase().includes(termino)) return false;
+      }
       return true;
     });
 
     const total = ventas.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const start = (page - 1) * limit;
+    const pagina = ventas.slice(start, start + limit);
+
+    const todasLasNotas = await this.comprobantesService.findAll(
+      sucursalId,
+      TipoComprobante.NOTA_CREDITO,
+    );
+    const ventaIds = new Set(pagina.map((v) => v.id));
+    const notasPorVenta = new Map<string, Comprobante[]>();
+    for (const nota of todasLasNotas) {
+      if (!nota.comprobante_origen_id || !ventaIds.has(nota.comprobante_origen_id)) continue;
+      const lista = notasPorVenta.get(nota.comprobante_origen_id) ?? [];
+      lista.push(nota);
+      notasPorVenta.set(nota.comprobante_origen_id, lista);
+    }
 
     return {
-      data: ventas.slice(start, start + limit),
+      data: pagina.map((venta) => ({
+        ...venta,
+        notasCredito: notasPorVenta.get(venta.id) ?? [],
+      })),
       meta: { page, limit, total, totalPages },
     };
   }
 
-  async pendientesCobro(sucursalId: string): Promise<Comprobante[]> {
+  async pendientesCobro(sucursalId: string): Promise<
+    (Comprobante & { tomada_por?: { id: string; nombreCompleto: string } | null })[]
+  > {
     const ventas = await this.findAll(sucursalId);
-    return ventas.filter((venta) =>
+    const pendientes = ventas.filter((venta) =>
       [EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(venta.estado),
     );
+
+    const cajeroIds = [
+      ...new Set(pendientes.map((v) => v.tomada_por_cajero_id).filter(Boolean) as string[]),
+    ];
+    const cajeros = cajeroIds.length
+      ? await this.empleadoRepo.findBy({ id: In(cajeroIds) })
+      : [];
+    const cajerosById = new Map(cajeros.map((e) => [e.id, e]));
+
+    return pendientes.map((venta) => {
+      const cajero = venta.tomada_por_cajero_id
+        ? cajerosById.get(venta.tomada_por_cajero_id)
+        : null;
+      return Object.assign(venta, {
+        tomada_por: cajero
+          ? { id: cajero.id, nombreCompleto: cajero.nombreCompleto }
+          : null,
+      });
+    });
   }
 
   async findOne(id: string, sucursalId: string, empleadoId?: string): Promise<Comprobante> {
@@ -220,6 +284,7 @@ export class PosVentasQueryService {
     {
       venta: Comprobante;
       pagos: PagoPos[];
+      notasCredito: Comprobante[];
       vendedor: { id: string; nombreCompleto: string; email: string } | null;
       cajero: { id: string; nombreCompleto: string; email: string } | null;
       margen: {
@@ -233,6 +298,19 @@ export class PosVentasQueryService {
     const ventas = (await this.findAll(sucursalId)).filter(
       (venta) => venta.caja_id === cajaId,
     );
+
+    const ventaIds = new Set(ventas.map((v) => v.id));
+    const todasLasNotas = await this.comprobantesService.findAll(
+      sucursalId,
+      TipoComprobante.NOTA_CREDITO,
+    );
+    const notasPorVenta = new Map<string, Comprobante[]>();
+    for (const nota of todasLasNotas) {
+      if (!nota.comprobante_origen_id || !ventaIds.has(nota.comprobante_origen_id)) continue;
+      const lista = notasPorVenta.get(nota.comprobante_origen_id) ?? [];
+      lista.push(nota);
+      notasPorVenta.set(nota.comprobante_origen_id, lista);
+    }
 
     const pagosPorVenta = await Promise.all(
       ventas.map((venta) => this.pagosPosService.findByComprobante(venta.id)),
@@ -265,6 +343,7 @@ export class PosVentasQueryService {
     return ventas.map((venta, index) => ({
       venta,
       pagos: pagosPorVenta[index],
+      notasCredito: notasPorVenta.get(venta.id) ?? [],
       vendedor: this.empleadoResumen(
         venta.empleado_vendedor_id ? empleadosById.get(venta.empleado_vendedor_id) : null,
       ),

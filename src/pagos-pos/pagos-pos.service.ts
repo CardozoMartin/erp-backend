@@ -46,12 +46,15 @@ export class PagosPosService {
     const antes = this.snapshotComprobanteCobro(comprobante);
     this.validarComprobanteCobrable(comprobante);
 
-    // 2. Validamos configuracion de pago mixto y caja abierta.
+    // 2. Validamos configuracion de pago mixto y que la caja pertenezca al empleado.
     const config = await this.configuracionService.crearPorDefecto(sucursalId);
     if (!config.permitir_pago_mixto && dto.pagos.length > 1) {
       throw new BadRequestException('Esta sucursal no permite pago mixto');
     }
-    await this.cajaService.findOne(dto.caja_id, sucursalId);
+    const caja = await this.cajaService.findOne(dto.caja_id, sucursalId);
+    if (caja.empleado_id !== empleadoId) {
+      throw new BadRequestException('Solo podés cobrar usando tu propia caja');
+    }
 
     // 3. Validamos y calculamos cada pago antes de escribir nada.
     const pagosCalculados = await Promise.all(
@@ -74,7 +77,18 @@ export class PagosPosService {
     await queryRunner.startTransaction();
 
     try {
-      // 4. Guardamos los pagos POS ligados al comprobante.
+      // 4. Bloqueamos la fila para evitar cobro simultáneo por dos cajeros.
+      const bloqueado = await queryRunner.manager
+        .getRepository(Comprobante)
+        .findOne({ where: { id: comprobante.id }, lock: { mode: 'pessimistic_write' } });
+      if (!bloqueado) throw new BadRequestException('Comprobante no encontrado');
+      if (
+        [EstadoComprobante.COBRADA, EstadoComprobante.ANULADO, EstadoComprobante.CANCELADA, EstadoComprobante.DEVUELTA].includes(bloqueado.estado)
+      ) {
+        throw new BadRequestException('El comprobante ya fue cobrado o está anulado');
+      }
+
+      // 5. Guardamos los pagos POS ligados al comprobante.
       for (const pago of pagosCalculados) {
         const pagoGuardado = this.pagoRepo.create({
           ...pago,
@@ -126,10 +140,11 @@ export class PagosPosService {
         );
       }
 
-      // 8. Marcamos el comprobante como cobrado.
+      // 8. Marcamos el comprobante como cobrado y liberamos el bloqueo de cajero.
       comprobante.estado = EstadoComprobante.COBRADA;
       comprobante.caja_id = dto.caja_id;
       comprobante.empleado_cajero_id = empleadoId;
+      comprobante.tomada_por_cajero_id = null;
       comprobante.recargo_total = this.round(
         Number(comprobante.recargo_total ?? 0) +
           pagosCalculados.reduce((sum, pago) => sum + pago.recargo_monto, 0),
@@ -253,6 +268,7 @@ export class PagosPosService {
       comprobante.estado = EstadoComprobante.COBRADA;
       comprobante.caja_id = null;
       comprobante.empleado_cajero_id = empleadoId;
+      comprobante.tomada_por_cajero_id = null;
       await queryRunner.manager.save(comprobante);
 
       await queryRunner.commitTransaction();

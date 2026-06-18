@@ -155,6 +155,10 @@ export class ConfiguracionSucursal {
   @Column({ default: true })
   mostrar_datos_fiscales!: boolean;
 
+  // -- Stock inter-sucursal
+  @Column({ default: false })
+  consulta_stock_otras_sucursales!: boolean;
+
   @UpdateDateColumn()
   updated_at!: Date;
 }

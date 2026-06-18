@@ -71,6 +71,15 @@ export class Cliente {
   @Column({ default: true })
   activo!: boolean;
 
+  @Column({ default: false })
+  bloqueado!: boolean;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  razon_bloqueo!: string | null;
+
+  @Column({ default: false })
+  accion_legal!: boolean;
+
   // Relaciones
   @OneToOne(() => CuentaCorriente, (cc) => cc.cliente, { nullable: true })
   cuentaCorriente!: CuentaCorriente | null;

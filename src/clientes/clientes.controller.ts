@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -40,8 +41,9 @@ export class ClientesController {
 
   @Get()
   @RequierePermiso('clientes.ver')
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('activo') activo?: string) {
+    const filtroActivo = activo === 'true' ? true : activo === 'false' ? false : undefined;
+    return this.service.findAll(filtroActivo);
   }
 
   @Get(':id')
@@ -60,6 +62,40 @@ export class ClientesController {
   @RequierePermiso('clientes.eliminar')
   remove(@Param('id') id: string, @Request() req, @SucursalActiva() sucursalId: string) {
     return this.service.remove(id, req.user?.id, sucursalId);
+  }
+
+  @Patch(':id/toggle-activo')
+  @RequierePermiso('clientes.editar')
+  toggleActivo(@Param('id') id: string, @Request() req, @SucursalActiva() sucursalId: string) {
+    return this.service.toggleActivo(id, req.user?.id, sucursalId);
+  }
+
+  @Patch(':id/cuenta-corriente/toggle')
+  @RequierePermiso('clientes.cuenta_corriente.operar')
+  toggleCuentaCorriente(@Param('id') id: string, @Request() req, @SucursalActiva() sucursalId: string) {
+    return this.service.toggleCuentaCorriente(id, req.user?.id, sucursalId);
+  }
+
+  @Patch(':id/bloqueo')
+  @RequierePermiso('clientes.editar')
+  setBloqueo(
+    @Param('id') id: string,
+    @Body() body: { bloqueado: boolean; razon?: string },
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.service.setBloqueo(id, body.bloqueado, body.razon ?? null, req.user?.id, sucursalId);
+  }
+
+  @Patch(':id/accion-legal')
+  @RequierePermiso('clientes.editar')
+  setAccionLegal(
+    @Param('id') id: string,
+    @Body() body: { accion_legal: boolean },
+    @Request() req,
+    @SucursalActiva() sucursalId: string,
+  ) {
+    return this.service.setAccionLegal(id, body.accion_legal, req.user?.id, sucursalId);
   }
 
   @Post(':id/cuenta-corriente')
