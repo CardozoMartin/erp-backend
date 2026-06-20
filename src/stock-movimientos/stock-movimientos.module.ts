@@ -6,9 +6,10 @@ import { Stock } from 'src/stock/entities/stock.entity';
 import { StockMovimiento } from './entities/stock-movimiento.entity';
 import { StockMovimientosController } from './stock-movimientos.controller';
 import { StockMovimientosService } from './stock-movimientos.service';
+import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
 
 @Module({
-  imports: [AuditoriaModule, TypeOrmModule.forFeature([StockMovimiento, Stock, Producto])],
+  imports: [AuditoriaModule, ConfiguracionModule, TypeOrmModule.forFeature([StockMovimiento, Stock, Producto])],
   controllers: [StockMovimientosController],
   providers: [StockMovimientosService],
   exports: [StockMovimientosService, TypeOrmModule],

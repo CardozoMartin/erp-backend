@@ -7,7 +7,9 @@ import {
   Post,
   Query,
   Request,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
@@ -18,10 +20,14 @@ import {
   RegistrarMovimientoCajaDto,
 } from './dto/create-caja.dto';
 import { CajaService } from './caja.service';
+import { PdfService } from 'src/pdf/pdf.service';
 
 @Controller('caja')
 export class CajaController {
-  constructor(private readonly cajaService: CajaService) {}
+  constructor(
+    private readonly cajaService: CajaService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   private puedeVerTodasLasCajas(req: any): boolean {
     return (
@@ -67,6 +73,28 @@ export class CajaController {
       hasta: puedeVerTodas ? query.hasta : undefined,
       estado: puedeVerTodas ? query.estado : undefined,
     });
+  }
+
+  @Get(':id/pdf')
+  @RequierePermiso('caja.ver')
+  async pdf(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+    @Res() res: Response,
+  ) {
+    const resumen = await this.cajaService.resumen(
+      id,
+      sucursalId,
+      this.puedeVerTodasLasCajas(req) ? undefined : req.user.id,
+    );
+    const buffer = await this.pdfService.generarCierreCajaPdfConDatos(resumen, sucursalId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="caja-${id.slice(0, 8)}.pdf"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   @Get(':id/resumen')

@@ -9,6 +9,7 @@ import { PlanPago } from './entities/plan-pago.entity';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { CajaModule } from 'src/caja/caja.module';
 import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
+import { PdfModule } from 'src/pdf/pdf.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
     AuditoriaModule,
     CajaModule,
     ConfiguracionModule,
+    PdfModule,
   ],
   controllers: [ClientesController],
   providers: [ClientesService],

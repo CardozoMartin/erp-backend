@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email.service';
 import { ComprobanteItem } from 'src/comprobantes/entities/comprobante-item.entity';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { UnidadVenta } from 'src/producto/entities/producto.entity';
@@ -19,6 +20,8 @@ import {
 
 @Injectable()
 export class StockMovimientosService {
+  private readonly logger = new Logger(StockMovimientosService.name);
+
   constructor(
     @InjectRepository(StockMovimiento)
     private readonly movimientoRepo: Repository<StockMovimiento>,
@@ -27,6 +30,7 @@ export class StockMovimientosService {
     @InjectRepository(Producto)
     private readonly productoRepo: Repository<Producto>,
     private readonly auditoriaService: AuditoriaService,
+    private readonly emailService: ConfiguracionEmailService,
   ) {}
 
   async ajusteManual(
@@ -176,6 +180,9 @@ export class StockMovimientosService {
         descripcion: `Salida por comprobante ${comprobante.numero}`,
       });
       movimientos.push(await movimientoRepo.save(movimiento));
+
+      // Alerta de stock mínimo en background — no bloquea el cobro
+      void this.enviarAlertaStockMinimo(stock, producto.nombre, comprobante.sucursal_id);
     }
 
     return movimientos;
@@ -233,7 +240,7 @@ export class StockMovimientosService {
     stock.cantidad = cantidadNueva;
     await stockRepo.save(stock);
 
-    return movimientoRepo.save(
+    const movimientoDespacho = await movimientoRepo.save(
       movimientoRepo.create({
         tipo: TipoMovimientoStock.DESPACHO,
         origen: OrigenMovimientoStock.DESPACHO,
@@ -249,6 +256,9 @@ export class StockMovimientosService {
         descripcion: `Salida por despacho de ${params.item.descripcion}`,
       }),
     );
+
+    void this.enviarAlertaStockMinimo(stock, params.item.descripcion, sucursalId);
+    return movimientoDespacho;
   }
 
   async registrarEntradaPorNotaCredito(
@@ -391,6 +401,49 @@ export class StockMovimientosService {
       throw new BadRequestException(
         'La cantidad debe ser entera para productos vendidos por unidad',
       );
+    }
+  }
+
+  // Dispara alerta si el stock quedó por debajo del mínimo configurado.
+  // Se llama de forma asíncrona sin await para no bloquear el flujo de venta.
+  private async enviarAlertaStockMinimo(
+    stock: Stock,
+    productoNombre: string,
+    sucursalId: string,
+  ): Promise<void> {
+    try {
+      const minimo = Number(stock.cantidad_minima ?? 0);
+      if (minimo <= 0 || Number(stock.cantidad) > minimo) return;
+
+      const asunto = `⚠️ Stock mínimo alcanzado: ${productoNombre}`;
+      const cantidad = Number(stock.cantidad).toFixed(2);
+      const texto = [
+        `ALERTA DE STOCK MÍNIMO`,
+        ``,
+        `Producto: ${productoNombre}`,
+        `Stock actual: ${cantidad}`,
+        `Stock mínimo configurado: ${minimo}`,
+        `Sucursal ID: ${sucursalId}`,
+        ``,
+        `Se recomienda reabastecer este producto a la brevedad.`,
+        ``,
+        `-- Sistema ERP`,
+      ].join('\n');
+
+      // Obtener el email de la sucursal para enviar la alerta al remitente configurado
+      const emailConfig = await (this.emailService as any).emailRepo.findOne({
+        where: { sucursal_id: sucursalId },
+      }) as { email_remitente?: string; activo?: boolean } | null;
+      if (!emailConfig?.activo || !emailConfig.email_remitente) return;
+
+      await this.emailService.enviarCorreoSucursal(sucursalId, {
+        to: emailConfig.email_remitente,
+        subject: asunto,
+        text: texto,
+      });
+    } catch (error) {
+      // La alerta es secundaria — un fallo no debe interrumpir la venta
+      this.logger.warn(`No se pudo enviar alerta de stock para sucursal ${sucursalId}: ${(error as Error).message}`);
     }
   }
 }
