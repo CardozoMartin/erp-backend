@@ -9,6 +9,7 @@ import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { StockMovimientosModule } from 'src/stock-movimientos/stock-movimientos.module';
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
+import { PdfModule } from 'src/pdf/pdf.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
     PagosModule,
     AuditoriaModule,
     StockMovimientosModule,
+    PdfModule,
   ],
   controllers: [CajaController],
   providers: [CajaService],

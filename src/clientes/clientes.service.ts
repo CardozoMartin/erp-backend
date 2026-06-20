@@ -24,6 +24,7 @@ import { UpdateClienteDto } from './dto/update-cliente.dto';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { CajaService } from 'src/caja/caja.service';
 import { ConfiguracionEmailService } from 'src/configuracion/configuracion-email.service';
+import { PdfService } from 'src/pdf/pdf.service';
 import {
   EnviarResumenCuentaDto,
   TipoResumenCuenta,
@@ -48,6 +49,7 @@ export class ClientesService {
     private readonly auditoriaService: AuditoriaService,
     private readonly cajaService: CajaService,
     private readonly configuracionEmailService: ConfiguracionEmailService,
+    private readonly pdfService: PdfService,
   ) {}
 
   async create(
@@ -896,16 +898,29 @@ export class ClientesService {
     const tipoResumen = dto.tipo_resumen ?? TipoResumenCuenta.CARGOS;
     const adjuntarPdf = dto.adjuntar_pdf !== false;
 
+    const pdfBuffer = adjuntarPdf
+      ? await this.pdfService.generarResumenCuentaCorrientePdf(
+          cliente,
+          movimientos,
+          {
+            periodo: this.describePeriodoResumen(dto),
+            tipoResumen: this.labelTipoResumen(tipoResumen),
+            mensaje: dto.mensaje?.trim() || undefined,
+            config: null,
+          },
+        )
+      : null;
+
     await this.configuracionEmailService.enviarCorreoSucursal(sucursalId, {
       to: destino,
       subject: asunto,
       text: this.buildResumenCuentaText(cliente, movimientos, dto),
-      attachments: adjuntarPdf
+      attachments: pdfBuffer
         ? [
             {
               filename: this.nombreArchivoResumenCuenta(cliente, dto),
               contentType: 'application/pdf',
-              content: this.buildResumenCuentaPdf(cliente, movimientos, dto),
+              content: pdfBuffer,
             },
           ]
         : undefined,

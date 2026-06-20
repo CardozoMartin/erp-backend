@@ -9,8 +9,10 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
@@ -22,16 +24,20 @@ import {
   RegistrarNotaCreditoCuentaDto,
   RegistrarPagoCuentaDto,
 } from './dto/cuenta-corriente-operacion.dto';
-import { EnviarResumenCuentaDto } from './dto/enviar-resumen-cuenta.dto';
+import { EnviarResumenCuentaDto, TipoResumenCuenta } from './dto/enviar-resumen-cuenta.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { SucursalGuard } from 'src/sucursal/decorators/sucursal.guard';
+import { PdfService } from 'src/pdf/pdf.service';
 
 @UseGuards(JwtAuthGuard, SucursalGuard)
 @Controller('clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) {}
+  constructor(
+    private readonly service: ClientesService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   @Post()
   @RequierePermiso('clientes.cargar')
@@ -119,6 +125,41 @@ export class ClientesController {
   @RequierePermiso('clientes.cuenta_corriente.ver')
   getMovimientos(@Param('id') id: string) {
     return this.service.getMovimientos(id);
+  }
+
+  @Get(':id/cuenta-corriente/pdf')
+  @RequierePermiso('clientes.ver')
+  async pdfResumenCuenta(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('tipo_resumen') tipoResumen?: TipoResumenCuenta,
+    @Res() res?: Response,
+  ) {
+    const cliente = await this.service.findOne(id);
+    const movimientos = await this.service.getMovimientos(id);
+    const filtrados = this.service['filtrarMovimientosResumen'](movimientos, {
+      destino: '',
+      desde,
+      hasta,
+      tipo_resumen: tipoResumen ?? TipoResumenCuenta.TODOS,
+    });
+    const buffer = await this.pdfService.generarResumenCuentaCorrientePdf(
+      cliente,
+      filtrados,
+      {
+        periodo: desde && hasta ? `${desde} al ${hasta}` : 'Todos los períodos',
+        tipoResumen: tipoResumen ?? 'TODOS',
+        config: null,
+      },
+    );
+    res!.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="cuenta-corriente-${id.slice(0, 8)}.pdf"`,
+      'Content-Length': buffer.length,
+    });
+    res!.end(buffer);
   }
 
   @Post(':id/cuenta-corriente/enviar-resumen')
