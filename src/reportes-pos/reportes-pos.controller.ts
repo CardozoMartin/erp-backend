@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
@@ -8,6 +9,8 @@ import { ReportesPosService } from './reportes-pos.service';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+@ApiTags('reportes-pos')
+@ApiBearerAuth('JWT')
 @Controller('reportes-pos')
 export class ReportesPosController {
   constructor(

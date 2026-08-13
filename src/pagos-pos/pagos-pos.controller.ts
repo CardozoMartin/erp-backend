@@ -1,9 +1,12 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import { CobrarComprobanteDto } from './dto/create-pago-pos.dto';
 import { PagosPosService } from './pagos-pos.service';
 
+@ApiTags('pagos-pos')
+@ApiBearerAuth('JWT')
 @Controller('pagos-pos')
 export class PagosPosController {
   constructor(private readonly pagosPosService: PagosPosService) {}

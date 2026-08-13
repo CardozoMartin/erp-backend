@@ -408,8 +408,11 @@ export class PedidosEnvioService {
     };
   }
 
-  private diffItems(antes: any[] = [], despues: any[] = []) {
-    const key = (item: any) => `${item.producto_id ?? item.descripcion}:${item.variante_id ?? ''}`;
+  private diffItems(
+    antes: Array<{ producto_id?: string | number | null; descripcion?: string; variante_id?: string | number | null; cantidad?: number; precio_unitario?: number }> = [],
+    despues: typeof antes = [],
+  ) {
+    const key = (item: typeof antes[number]) => `${item.producto_id ?? item.descripcion}:${item.variante_id ?? ''}`;
     const anteriores = new Map(antes.map((item) => [key(item), item]));
     const actuales = new Map(despues.map((item) => [key(item), item]));
     const agregados = despues.filter((item) => !anteriores.has(key(item)));

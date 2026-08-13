@@ -14,6 +14,10 @@ import { StockMovimiento } from 'src/stock-movimientos/entities/stock-movimiento
 import { ExcelModule } from 'src/excel/excel.module';
 import { ReportesPosController } from './reportes-pos.controller';
 import { ReportesPosService } from './reportes-pos.service';
+import { ReportesVentasService } from './reportes-ventas.service';
+import { ReportesCajaService } from './reportes-caja.service';
+import { ReportesClientesService } from './reportes-clientes.service';
+import { ReportesStockService } from './reportes-stock.service';
 
 @Module({
   imports: [
@@ -33,7 +37,13 @@ import { ReportesPosService } from './reportes-pos.service';
     ExcelModule,
   ],
   controllers: [ReportesPosController],
-  providers: [ReportesPosService],
+  providers: [
+    ReportesPosService,
+    ReportesVentasService,
+    ReportesCajaService,
+    ReportesClientesService,
+    ReportesStockService,
+  ],
   exports: [ReportesPosService],
 })
 export class ReportesPosModule {}

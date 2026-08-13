@@ -1,6 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { CajaService } from 'src/caja/caja.service';
 import { ClientesService } from 'src/clientes/clientes.service';
+import { TipoCliente } from 'src/clientes/entities/cliente.entity';
+import { ArcaService } from 'src/arca/arca.service';
+import { RespuestaCAE } from 'src/arca/arca-wsfev1.service';
+import { calcularIvaDesdeItems, ItemParaIva } from 'src/arca/arca-iva.helper';
+import { Producto } from 'src/producto/entities/producto.entity';
 import { ComprobantesService } from 'src/comprobantes/comprobantes.service';
 import { CreateComprobanteItemDto } from 'src/comprobantes/dto/create-comprobante.dto';
 import { ComprobanteItem } from 'src/comprobantes/entities/comprobante-item.entity';
@@ -18,11 +25,16 @@ import {
 
 @Injectable()
 export class NotasCreditoService {
+  private readonly logger = new Logger(NotasCreditoService.name);
+
   constructor(
     private readonly comprobantesService: ComprobantesService,
     private readonly stockMovimientosService: StockMovimientosService,
     private readonly clientesService: ClientesService,
     private readonly cajaService: CajaService,
+    private readonly arcaService: ArcaService,
+    @InjectRepository(Producto)
+    private readonly productoRepo: Repository<Producto>,
   ) {}
 
   async create(
@@ -46,7 +58,15 @@ export class NotasCreditoService {
     const destino = dto.destino ?? DestinoNotaCredito.SOLO_EMITIR;
     this.validarDestino(destino, origen, dto);
 
-    // 3. Creamos la nota como comprobante numerado independiente.
+    // 3. Si el origen es una factura autorizada, la NC también necesita CAE.
+    // Sobre ventas o tickets internos no corresponde: no son fiscales.
+    const { respuestaCAE, errorArca } = await this.solicitarCAE(
+      sucursalId,
+      origen,
+      itemsNota,
+    );
+
+    // 4. Creamos la nota como comprobante numerado independiente.
     const nota = await this.comprobantesService.create(sucursalId, empleadoId, {
       tipo: TipoComprobante.NOTA_CREDITO,
       estado: EstadoComprobante.EMITIDA,
@@ -54,7 +74,16 @@ export class NotasCreditoService {
       comprobante_origen_id: origen.id,
       empleado_vendedor_id: origen.empleado_vendedor_id,
       empleado_cajero_id: empleadoId,
-      observaciones: dto.observaciones ?? `Nota de credito de ${origen.numero}`,
+      codigo_fiscal: this.codigoNotaCreditoDesde(origen),
+      // La NC se emite en el mismo punto de venta que el comprobante que anula.
+      // Sin este dato el QR fiscal no se puede construir (ver QrAfipService).
+      punto_venta: origen.punto_venta,
+      numero_afip: respuestaCAE?.numeroCbte ?? null,
+      cae: respuestaCAE?.cae ?? null,
+      cae_vencimiento: respuestaCAE?.caeVencimiento?.toISOString() ?? null,
+      observaciones: errorArca
+        ? `Nota de credito de ${origen.numero} — SIN CAE: ${errorArca.slice(0, 400)}`
+        : dto.observaciones ?? `Nota de credito de ${origen.numero}`,
       items: itemsNota,
     });
 
@@ -117,6 +146,129 @@ export class NotasCreditoService {
   ): Promise<Comprobante[]> {
     const notas = await this.findAll(sucursalId);
     return notas.filter((nota) => nota.comprobante_origen_id === comprobanteId);
+  }
+
+  /** Código AFIP de la factura de origen, o null si no era fiscal */
+  private codigoFacturaOrigen(origen: Comprobante): number | null {
+    if (origen.tipo === TipoComprobante.FACTURA_A) return 1;
+    if (origen.tipo === TipoComprobante.FACTURA_B) return 6;
+    if (origen.tipo === TipoComprobante.FACTURA_C) return 11;
+    return null;
+  }
+
+  /** Código fiscal de la NC según la letra de la factura corregida */
+  private codigoNotaCreditoDesde(origen: Comprobante): string | null {
+    const codigo = this.codigoFacturaOrigen(origen);
+    if (codigo === 1) return '003';
+    if (codigo === 6) return '008';
+    if (codigo === 11) return '013';
+    return null;
+  }
+
+  /**
+   * Pide el CAE de la nota de crédito. Igual que en la facturación, un fallo de
+   * AFIP no bloquea la emisión: la nota queda sin CAE y el motivo se asienta en
+   * observaciones para poder reintentar.
+   */
+  private async solicitarCAE(
+    sucursalId: string,
+    origen: Comprobante,
+    itemsNota: CreateComprobanteItemDto[],
+  ): Promise<{ respuestaCAE: RespuestaCAE | null; errorArca: string | null }> {
+    const codigoOrigen = this.codigoFacturaOrigen(origen);
+
+    // Solo las facturas fiscales ya autorizadas generan NC con CAE
+    if (!codigoOrigen || !origen.cae) {
+      return { respuestaCAE: null, errorArca: null };
+    }
+
+    const total = this.round(
+      itemsNota.reduce(
+        (suma, item) =>
+          suma +
+          Number(item.cantidad) * Number(item.precio_unitario) -
+          Number(item.descuento_monto ?? 0) +
+          Number(item.recargo_monto ?? 0),
+        0,
+      ),
+    );
+
+    // La NC hereda el tratamiento de IVA de la factura que corrige
+    const discriminaIva = codigoOrigen === 1 || codigoOrigen === 6;
+    const totalesIva = discriminaIva
+      ? calcularIvaDesdeItems(await this.itemsConAlicuota(itemsNota))
+      : null;
+
+    const cliente = origen.cliente_id
+      ? await this.clientesService.findOne(origen.cliente_id)
+      : null;
+
+    try {
+      const respuestaCAE = await this.arcaService.solicitarCAEParaNotaCredito(
+        sucursalId,
+        {
+          puntoVenta: 0, // ArcaService lo lee de su config
+          cuit: '',      // idem
+          numero: 0,     // idem
+          fechaCbte: this.fechaAfipLocal(),
+          importeTotal: total,
+          importeNeto: totalesIva?.neto ?? total,
+          importeIva: totalesIva?.iva ?? 0,
+          importeExento: totalesIva?.exento ?? 0,
+          alicuotas: totalesIva?.alicuotas,
+          cuitReceptor: cliente?.cuit ?? null,
+          dniReceptor: cliente?.dni ?? null,
+          condicionIvaReceptor: this.condicionIvaAfip(cliente?.tipo ?? null),
+          codigoFacturaOrigen: codigoOrigen,
+          numeroFacturaOrigen: Number(origen.numero_secuencial ?? 0),
+          puntoVentaOrigen: Number(origen.punto_venta ?? 0),
+        },
+      );
+      return { respuestaCAE, errorArca: null };
+    } catch (err: unknown) {
+      const errorArca = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `ARCA no autorizó la nota de crédito de ${origen.numero}: ${errorArca}`,
+      );
+      return { respuestaCAE: null, errorArca };
+    }
+  }
+
+  /** Empareja cada item con la alícuota de su producto */
+  private async itemsConAlicuota(
+    items: CreateComprobanteItemDto[],
+  ): Promise<ItemParaIva[]> {
+    const ids = [
+      ...new Set(items.map((i) => i.producto_id).filter((id): id is string => !!id)),
+    ];
+    const productos = ids.length
+      ? await this.productoRepo.find({ where: { id: In(ids) }, select: ['id', 'alicuota_iva'] })
+      : [];
+    const porProducto = new Map(productos.map((p) => [p.id, Number(p.alicuota_iva)]));
+
+    return items.map((item) => ({
+      subtotal:
+        Number(item.cantidad) * Number(item.precio_unitario) -
+        Number(item.descuento_monto ?? 0) +
+        Number(item.recargo_monto ?? 0),
+      alicuota_iva: item.producto_id ? porProducto.get(item.producto_id) ?? 21 : 21,
+    }));
+  }
+
+  /** YYYYMMDD en hora local: con UTC una venta nocturna se envía con fecha futura */
+  private fechaAfipLocal(): string {
+    const ahora = new Date();
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    return `${ahora.getFullYear()}${mes}${dia}`;
+  }
+
+  /** Condición IVA del receptor según AFIP (RG 5616) */
+  private condicionIvaAfip(tipoCliente: TipoCliente | null): number {
+    if (tipoCliente === TipoCliente.RESPONSABLE_INSCRIPTO) return 1;
+    if (tipoCliente === TipoCliente.EXENTO) return 4;
+    if (tipoCliente === TipoCliente.MONOTRIBUTISTA) return 6;
+    return 5; // Consumidor Final
   }
 
   private validarOrigen(origen: Comprobante): void {

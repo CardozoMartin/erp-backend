@@ -206,8 +206,18 @@ export const frontRoutes: FrontRouteDefinition[] = [
     requiredAny: ['admin.servicios', 'mp.crear', 'mp.leer', 'config.pos'],
   },
   {
+    path: '/configuracion-backup',
+    label: 'Backup Google Drive',
+    requiredAny: ['admin.servicios', 'mp.crear', 'config.pos'],
+  },
+  {
+    path: '/configuracion-arca',
+    label: 'Facturacion ARCA',
+    requiredAny: ['admin.servicios', 'config.pos'],
+  },
+  {
     path: '/auditoria',
     label: 'Auditoria',
-    requiredAny: ['reportes.ver'],
+    requiredAny: ['auditoria.ver'],
   },
 ];

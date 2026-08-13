@@ -9,6 +9,7 @@ import {
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
 import { ListaPrecioService } from 'src/lista-precio/lista-precio.service';
+import { MedioPago } from 'src/pagos-module/entities/medio-pago.entity';
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { PagosPosService } from 'src/pagos-pos/pagos-pos.service';
 import { Producto } from 'src/producto/entities/producto.entity';
@@ -21,6 +22,10 @@ export class PosVentasQueryService {
     private readonly empleadoRepo: Repository<Empleado>,
     @InjectRepository(Producto)
     private readonly productoRepo: Repository<Producto>,
+    @InjectRepository(ListaPrecio)
+    private readonly listaPrecioRepo: Repository<ListaPrecio>,
+    @InjectRepository(MedioPago)
+    private readonly medioPagoRepo: Repository<MedioPago>,
     private readonly comprobantesService: ComprobantesService,
     private readonly pagosPosService: PagosPosService,
     private readonly listaPrecioService: ListaPrecioService,
@@ -106,38 +111,72 @@ export class PosVentasQueryService {
     }
 
     return {
-      data: pagina.map((venta) => ({
-        ...venta,
-        notasCredito: notasPorVenta.get(venta.id) ?? [],
-      })),
+      data: pagina.map((venta) => {
+        (venta as Comprobante & { notasCredito: Comprobante[] }).notasCredito =
+          notasPorVenta.get(venta.id) ?? [];
+        return venta as Comprobante & { notasCredito: Comprobante[] };
+      }),
       meta: { page, limit, total, totalPages },
     };
   }
 
   async pendientesCobro(sucursalId: string): Promise<
-    (Comprobante & { tomada_por?: { id: string; nombreCompleto: string } | null })[]
+    (Comprobante & {
+      tomada_por?: { id: string; nombreCompleto: string } | null;
+      vendedor?: { id: string; nombreCompleto: string } | null;
+      lista_precio_nombre?: string | null;
+      medio_pago_sugerido_nombre?: string | null;
+    })[]
   > {
     const ventas = await this.findAll(sucursalId);
     const pendientes = ventas.filter((venta) =>
       [EstadoComprobante.BORRADOR, EstadoComprobante.PENDIENTE_COBRO].includes(venta.estado),
     );
 
-    const cajeroIds = [
-      ...new Set(pendientes.map((v) => v.tomada_por_cajero_id).filter(Boolean) as string[]),
+    const empleadoIds = [
+      ...new Set([
+        ...pendientes.map((v) => v.tomada_por_cajero_id),
+        ...pendientes.map((v) => v.empleado_vendedor_id),
+      ].filter(Boolean) as string[]),
     ];
-    const cajeros = cajeroIds.length
-      ? await this.empleadoRepo.findBy({ id: In(cajeroIds) })
+    const empleados = empleadoIds.length
+      ? await this.empleadoRepo.findBy({ id: In(empleadoIds) })
       : [];
-    const cajerosById = new Map(cajeros.map((e) => [e.id, e]));
+    const empleadosById = new Map(empleados.map((e) => [e.id, e]));
+
+    const listaPrecioIds = [
+      ...new Set(pendientes.map((v) => v.lista_precio_id).filter(Boolean) as string[]),
+    ];
+    const listasPrecio = listaPrecioIds.length
+      ? await this.listaPrecioRepo.findBy({ id: In(listaPrecioIds) })
+      : [];
+    const listasPorId = new Map(listasPrecio.map((l) => [l.id, l]));
+
+    const medioPagoIds = [
+      ...new Set(pendientes.map((v) => v.medio_pago_sugerido_id).filter(Boolean) as string[]),
+    ];
+    const mediosPago = medioPagoIds.length
+      ? await this.medioPagoRepo.findBy({ id: In(medioPagoIds) })
+      : [];
+    const mediosPorId = new Map(mediosPago.map((m) => [m.id, m]));
 
     return pendientes.map((venta) => {
       const cajero = venta.tomada_por_cajero_id
-        ? cajerosById.get(venta.tomada_por_cajero_id)
+        ? empleadosById.get(venta.tomada_por_cajero_id)
         : null;
+      const vendedor = venta.empleado_vendedor_id
+        ? empleadosById.get(venta.empleado_vendedor_id)
+        : null;
+      const lista = venta.lista_precio_id ? listasPorId.get(venta.lista_precio_id) : null;
+      const medioPago = venta.medio_pago_sugerido_id
+        ? mediosPorId.get(venta.medio_pago_sugerido_id)
+        : null;
+
       return Object.assign(venta, {
-        tomada_por: cajero
-          ? { id: cajero.id, nombreCompleto: cajero.nombreCompleto }
-          : null,
+        tomada_por: cajero ? { id: cajero.id, nombreCompleto: cajero.nombreCompleto } : null,
+        vendedor: vendedor ? { id: vendedor.id, nombreCompleto: vendedor.nombreCompleto } : null,
+        lista_precio_nombre: lista?.nombre ?? null,
+        medio_pago_sugerido_nombre: medioPago?.nombre ?? null,
       });
     });
   }

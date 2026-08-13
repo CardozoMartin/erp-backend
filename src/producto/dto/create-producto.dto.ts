@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsDate,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -14,6 +15,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { ALICUOTAS_IVA_VALIDAS } from '../../arca/arca-iva.helper';
 import { RolImagen } from '../../imagen/entities/imagen.entity';
 import { CreateProductoPrecioDto } from '../../producto_precios/dto/create-producto_precio.dto';
 import { UnidadVenta } from '../entities/producto.entity';
@@ -250,6 +252,11 @@ export class CreateProductoDto {
   @IsNumber()
   margen_ganancia?: number;
 
+  /** Alícuota de IVA: 21 general, 10.5 alimentos, 0 exento */
+  @IsOptional()
+  @IsIn(ALICUOTAS_IVA_VALIDAS)
+  alicuota_iva?: number;
+
   @IsOptional()
   @IsEnum(UnidadVenta)
   unidad_venta?: UnidadVenta;
@@ -373,6 +380,11 @@ export class UpdateProductoDto {
   @IsOptional()
   @IsNumber()
   margen_ganancia?: number;
+
+  /** Alícuota de IVA: 21 general, 10.5 alimentos, 0 exento */
+  @IsOptional()
+  @IsIn(ALICUOTAS_IVA_VALIDAS)
+  alicuota_iva?: number;
 
   @IsOptional()
   @IsEnum(UnidadVenta)

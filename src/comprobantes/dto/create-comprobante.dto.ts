@@ -1,11 +1,14 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Min,
@@ -34,7 +37,7 @@ export class CreateComprobanteItemDto {
   descripcion?: string;
 
   @IsNumber()
-  @Min(0)
+  @IsPositive()
   cantidad!: number;
 
   @IsNumber()
@@ -94,6 +97,10 @@ export class CreateComprobanteDto {
   lista_precio_id?: string | null;
 
   @IsOptional()
+  @IsUUID()
+  medio_pago_sugerido_id?: string | null;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   descuento_global_porcentaje?: number;
@@ -124,6 +131,16 @@ export class CreateComprobanteDto {
   @IsString()
   codigo_fiscal?: string | null;
 
+  /**
+   * Número que AFIP autorizó para el comprobante. Cuando viene, manda sobre el
+   * contador local: la numeración fiscal la lleva AFIP y desviarse de ella deja
+   * el comprobante impreso con un número distinto al autorizado.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  numero_afip?: number | null;
+
   @IsOptional()
   @IsString()
   cae?: string | null;
@@ -137,6 +154,7 @@ export class CreateComprobanteDto {
   omitir_validacion_stock?: boolean;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateComprobanteItemDto)
   items!: CreateComprobanteItemDto[];

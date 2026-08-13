@@ -1,4 +1,6 @@
 import {
+  AfterLoad,
+  BeforeUpdate,
   Column,
   CreateDateColumn,
   Entity,
@@ -8,7 +10,18 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { BadRequestException } from '@nestjs/common';
 import { ComprobanteItem } from './comprobante-item.entity';
+import { Cliente, TipoCliente } from 'src/clientes/entities/cliente.entity';
+import { importeALetras } from '../utils/numero-a-letras';
+
+// Etiquetas fiscales legibles para el comprobante impreso
+const CONDICION_IVA_LABEL: Record<TipoCliente, string> = {
+  [TipoCliente.CONSUMIDOR_FINAL]: 'Consumidor Final',
+  [TipoCliente.RESPONSABLE_INSCRIPTO]: 'Responsable Inscripto',
+  [TipoCliente.MONOTRIBUTISTA]: 'Monotributista',
+  [TipoCliente.EXENTO]: 'Exento',
+};
 
 export enum TipoComprobante {
   COTIZACION = 'COTIZACION',
@@ -40,6 +53,19 @@ export enum EstadoComprobante {
   APLICADA = 'APLICADA',
   REEMBOLSADA = 'REEMBOLSADA',
 }
+
+const TRANSICIONES_PERMITIDAS: Partial<Record<EstadoComprobante, EstadoComprobante[]>> = {
+  [EstadoComprobante.BORRADOR]:          [EstadoComprobante.ENVIADO, EstadoComprobante.ACEPTADO, EstadoComprobante.RECHAZADO, EstadoComprobante.PENDIENTE_COBRO, EstadoComprobante.VENCIDO, EstadoComprobante.CANCELADA, EstadoComprobante.ANULADO],
+  [EstadoComprobante.ENVIADO]:           [EstadoComprobante.ACEPTADO, EstadoComprobante.RECHAZADO, EstadoComprobante.VENCIDO, EstadoComprobante.CANCELADA],
+  [EstadoComprobante.ACEPTADO]:          [EstadoComprobante.PENDIENTE_COBRO, EstadoComprobante.VENCIDO, EstadoComprobante.CANCELADA],
+  [EstadoComprobante.PENDIENTE_COBRO]:   [EstadoComprobante.COBRADA, EstadoComprobante.CANCELADA, EstadoComprobante.ANULADO],
+  [EstadoComprobante.PENDIENTE]:         [EstadoComprobante.ENTREGADO_PARCIAL, EstadoComprobante.ENTREGADO, EstadoComprobante.CANCELADA],
+  [EstadoComprobante.COBRADA]:           [EstadoComprobante.ENTREGADO_PARCIAL, EstadoComprobante.ENTREGADO, EstadoComprobante.EMITIDO, EstadoComprobante.EMITIDA, EstadoComprobante.ANULADO],
+  [EstadoComprobante.EMITIDO]:           [EstadoComprobante.ENTREGADO_PARCIAL, EstadoComprobante.ENTREGADO, EstadoComprobante.ANULADO],
+  [EstadoComprobante.EMITIDA]:           [EstadoComprobante.ENTREGADO_PARCIAL, EstadoComprobante.ENTREGADO, EstadoComprobante.APLICADA, EstadoComprobante.REEMBOLSADA, EstadoComprobante.DEVUELTA, EstadoComprobante.ANULADO],
+  [EstadoComprobante.ENTREGADO_PARCIAL]: [EstadoComprobante.ENTREGADO, EstadoComprobante.ANULADO],
+  // terminales sin salida: RECHAZADO, VENCIDO, CANCELADA, ANULADO, ENTREGADO, APLICADA, REEMBOLSADA, DEVUELTA
+};
 
 @Entity('comprobantes')
 export class Comprobante {
@@ -79,6 +105,12 @@ export class Comprobante {
   @Column({ type: 'varchar', length: 36, nullable: true })
   cliente_id!: string | null;
 
+  // Solo lectura: la impresion necesita razon social, CUIT y domicilio del cliente,
+  // que el comprobante no persiste. `cliente_id` sigue siendo la columna real.
+  @ManyToOne(() => Cliente, { nullable: true })
+  @JoinColumn({ name: 'cliente_id' })
+  cliente!: Cliente | null;
+
   @Column({ type: 'varchar', length: 36, nullable: true })
   empleado_vendedor_id!: string | null;
 
@@ -100,6 +132,9 @@ export class Comprobante {
 
   @Column({ type: 'varchar', length: 36, nullable: true })
   lista_precio_id!: string | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  medio_pago_sugerido_id!: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal!: number;
@@ -135,4 +170,45 @@ export class Comprobante {
 
   @UpdateDateColumn()
   updated_at!: Date;
+
+  // Campo no persistido — usado por @BeforeUpdate para validar la transición de estado
+  _estadoAnterior?: EstadoComprobante;
+
+  // ── Datos del cliente aplanados para impresion ────────────────────────────
+  // No son columnas: los completa @AfterLoad a partir de la relacion `cliente`.
+  // Se calculan como propiedades reales (y no como getters) porque JSON.stringify
+  // ignora los getters del prototipo y nunca llegarian al front.
+  cliente_nombre?: string | null;
+  cliente_cuit?: string | null;
+  cliente_dni?: string | null;
+  cliente_domicilio?: string | null;
+  cliente_condicion_iva?: string | null;
+  total_letras?: string;
+
+  @AfterLoad()
+  completarDatosImpresion() {
+    this.total_letras = importeALetras(this.total);
+
+    if (!this.cliente) return;
+    this.cliente_nombre =
+      this.cliente.razon_social ||
+      [this.cliente.nombre, this.cliente.apellido].filter(Boolean).join(' ') ||
+      null;
+    this.cliente_cuit = this.cliente.cuit ?? null;
+    this.cliente_dni = this.cliente.dni ?? null;
+    this.cliente_domicilio = this.cliente.direccion ?? null;
+    this.cliente_condicion_iva = CONDICION_IVA_LABEL[this.cliente.tipo] ?? null;
+  }
+
+  @BeforeUpdate()
+  validarTransicionEstado() {
+    if (!this._estadoAnterior || this._estadoAnterior === this.estado) return;
+
+    const permitidos = TRANSICIONES_PERMITIDAS[this._estadoAnterior];
+    if (permitidos && !permitidos.includes(this.estado)) {
+      throw new BadRequestException(
+        `Transición de estado inválida: ${this._estadoAnterior} → ${this.estado}`,
+      );
+    }
+  }
 }

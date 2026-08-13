@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { PermisosGuard } from 'src/auth/guards/permisos.guard';
@@ -16,6 +17,8 @@ import {
   MpAccessTokenDto,
 } from './dto/mp-onboarding.dto';
 
+@ApiTags('mercadopago')
+@ApiBearerAuth('JWT')
 @Controller(['mp', 'mercadopago'])
 @UseGuards(JwtAuthGuard, PermisosGuard)
 export class MercadopagoController {

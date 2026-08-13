@@ -42,6 +42,13 @@ export class Oferta {
   @Column({ default: true })
   activo!: boolean;
 
+  // null = sin límite de unidades; > 0 = la oferta se agota al venderse esa cantidad
+  @Column({ type: 'int', nullable: true, default: null })
+  cantidad_maxima!: number | null;
+
+  @Column({ type: 'int', default: 0 })
+  cantidad_vendida!: number;
+
   @CreateDateColumn()
   created_at!: Date;
 

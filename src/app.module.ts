@@ -53,6 +53,8 @@ import { Producto } from './producto/entities/producto.entity';
 import { ProductoPrecio } from './producto_precios/entities/producto_precio.entity';
 import { Stock } from './stock/entities/stock.entity';
 import { MercadopagoModule } from './mercadopago/mercadopago.module';
+import { ArcaModule } from './arca/arca.module';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
@@ -60,14 +62,33 @@ import { MercadopagoModule } from './mercadopago/mercadopago.module';
       isGlobal: true,
       validationSchema: Joi.object({
         NODE_ENV:    Joi.string().valid('development', 'production', 'test').default('development'),
-        DB_HOST:     Joi.string().required(),
-        DB_PORT:     Joi.number().default(3306),
-        DB_USER:     Joi.string().required(),
-        DB_PASS:     Joi.string().required(),
-        DB_NAME:     Joi.string().required(),
-        JWT_SECRET:  Joi.string().min(16).required(),
         PORT:        Joi.number().default(3000),
         CORS_ORIGIN: Joi.string().default('http://localhost:5173'),
+
+        // Base de datos
+        DB_HOST: Joi.string().required(),
+        DB_PORT: Joi.number().default(3306),
+        DB_USER: Joi.string().required(),
+        DB_PASS: Joi.string().required(),
+        DB_NAME: Joi.string().required(),
+
+        // Autenticación
+        JWT_SECRET: Joi.string().min(32).required(),
+
+        // Clave maestra de cifrado — cifra emails, backup, y cualquier secreto en DB
+        MASTER_ENCRYPT_KEY: Joi.string().min(32).required(),
+
+        // MercadoPago
+        MP_ENCRYPT_KEY:    Joi.string().min(32).required(),
+        MP_WEBHOOK_SECRET: Joi.string().min(16).required(),
+
+        // Cloudinary
+        CLOUDINARY_CLOUD_NAME: Joi.string().required(),
+        CLOUDINARY_API_KEY:    Joi.string().required(),
+        CLOUDINARY_API_SECRET: Joi.string().required(),
+
+        // ARCA — opcional hasta tener las credenciales de AFIP
+        ARCA_ENCRYPT_KEY: Joi.string().min(16).optional(),
       }),
     }),
     ThrottlerModule.forRoot([
@@ -136,6 +157,8 @@ import { MercadopagoModule } from './mercadopago/mercadopago.module';
     AuditoriaModule,
     PedidosEnvioModule,
     MercadopagoModule,
+    ArcaModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [

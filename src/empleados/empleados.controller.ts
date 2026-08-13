@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -21,6 +22,8 @@ import { EmpleadoSucursalesService } from './empleado-sucursales.service';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { AsignarPermisoDto } from './dto/empleado-permiso.dto';
 
+@ApiTags('empleados')
+@ApiBearerAuth('JWT')
 @Controller('empleados')
 export class EmpleadosController {
   constructor(

@@ -85,6 +85,7 @@ describe('MercadopagoService', () => {
       accessTokenEnc: 'enc-token',
       mpPosId: 'ABC123',
       estado: 'pendiente',
+      ultimoError: null as string | null,
     };
     repo.findOne.mockResolvedValue(config);
     repo.save.mockResolvedValue(config);
@@ -112,6 +113,7 @@ describe('MercadopagoService', () => {
       accessTokenEnc: 'enc-token',
       mpPosId: 'ABC123',
       estado: 'pendiente',
+      ultimoError: null as string | null,
     };
     repo.findOne.mockResolvedValue(config);
     repo.save.mockResolvedValue(config);

@@ -583,6 +583,7 @@ export class ProductoService {
         'precio.sucursal_id IN (:...sucursalIds) OR precio.sucursal_id IS NULL',
         { sucursalIds },
       )
+      .leftJoinAndSelect('producto.ofertas', 'ofertas')
       .where('producto.activo = true')
       .getMany();
   }

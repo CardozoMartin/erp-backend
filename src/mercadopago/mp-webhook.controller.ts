@@ -7,6 +7,23 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+
+interface MpWebhookBody {
+  data?: { id?: string | number };
+  type?: string;
+  topic?: string;
+  user_id?: string | number;
+}
+
+interface MpPago {
+  status: string;
+  external_reference?: string;
+  transaction_amount?: number;
+  total_paid_amount?: number;
+  payment_type_id?: string;
+  id?: string | number;
+  payments?: Array<MpPago>;
+}
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import axios from 'axios';
@@ -26,7 +43,7 @@ export class MpWebhookController {
   @Publico()
   @HttpCode(200)
   async recibirNotificacion(
-    @Body() body: any,
+    @Body() body: MpWebhookBody,
     @Headers('x-signature') xSignature: string,
     @Headers('x-request-id') xRequestId: string,
     @Query('data.id') dataId: string,
@@ -36,14 +53,8 @@ export class MpWebhookController {
       body.data?.id?.toString() || dataId || query.id?.toString() || '';
     if (!notificationId) return { ok: true };
 
-    if (xSignature) {
-      const esValido = this.validarFirma(
-        xSignature,
-        xRequestId,
-        notificationId,
-      );
-      if (!esValido) throw new BadRequestException('Firma invalida');
-    }
+    const esValido = this.validarFirma(xSignature, xRequestId, notificationId);
+    if (!esValido) throw new BadRequestException('Firma invalida');
 
     const tipo = body.type || body.topic || query.type || query.topic;
     const userId = body.user_id?.toString() || query.user_id?.toString();
@@ -89,7 +100,7 @@ export class MpWebhookController {
   }
 
   private async confirmarPagoSiAprobado(
-    pago: any,
+    pago: MpPago,
     paymentId: string,
     sucursalId: string,
   ) {

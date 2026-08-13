@@ -26,6 +26,8 @@ export class ComprobanteNumeradorService {
     sucursalId: string,
     tipo: TipoComprobante,
     repo: Repository<NumeradorComprobante>,
+    /** Número autorizado por AFIP; cuando viene, manda sobre el contador local */
+    numeroAfip?: number | null,
   ): Promise<{ numero: string; secuencial: number; prefijo: string }> {
     let numerador = await repo.findOne({
       where: { sucursal_id: sucursalId, tipo },
@@ -42,7 +44,11 @@ export class ComprobanteNumeradorService {
       });
     }
 
-    numerador.ultimo_numero = Number(numerador.ultimo_numero) + 1;
+    // La numeración fiscal la define AFIP. Si el contador local quedó atrás (o
+    // adelante) se lo alinea, para que el número impreso sea el autorizado.
+    numerador.ultimo_numero = numeroAfip
+      ? Number(numeroAfip)
+      : Number(numerador.ultimo_numero) + 1;
     await repo.save(numerador);
 
     return {

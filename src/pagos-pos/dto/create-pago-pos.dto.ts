@@ -1,11 +1,14 @@
 import {
+  ArrayMinSize,
   IsArray,
   IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -17,7 +20,8 @@ export class PagoPosItemDto {
   tipo!: TipoPagoPos;
 
   @IsNumber()
-  @Min(0)
+  @IsPositive()
+  @Max(99_999_999)
   monto!: number;
 
   @IsOptional()
@@ -44,6 +48,7 @@ export class CobrarComprobanteDto {
   caja_id!: string;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PagoPosItemDto)
   pagos!: PagoPosItemDto[];

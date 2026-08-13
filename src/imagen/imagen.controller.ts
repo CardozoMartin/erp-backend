@@ -11,7 +11,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import multer, { memoryStorage } from 'multer';
 import { ImagenService } from './imagen.service';
 import { CreateImagenDto } from './dto/create-imagen.dto';
 import { UpdateImagenDto } from './dto/update-imagen.dto';
@@ -22,11 +22,11 @@ import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator'
 const multerConfig = {
   storage: memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req: any, file: Express.Multer.File, cb: any) => {
+  fileFilter: (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     if (file.mimetype?.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new BadRequestException('Solo se permiten archivos de imagen'), false);
+      cb(new Error('Solo se permiten archivos de imagen'));
     }
   },
 };

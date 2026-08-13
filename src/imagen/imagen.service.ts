@@ -98,16 +98,12 @@ export class ImagenService {
     file: Express.Multer.File,
     sucursalId?: string,
   ): Promise<Imagen> {
-    console.log('[ImagenDebug] ImagenService.create dto:', dto);
-    //!validamos que el producto exissta
     const producto = await this.productoRepo.findOne({
       where: { id: dto.producto_id },
     });
     if (!producto) {
-      console.error('[ImagenDebug] Producto no encontrado para imagen:', dto.producto_id);
       throw new NotFoundException('Producto no encontrado');
     }
-    console.log('[ImagenDebug] Producto encontrado para imagen:', producto.id);
 
     //2.- validar variante si viene en el dto
     let variante: Variante | null = null;
@@ -116,7 +112,6 @@ export class ImagenService {
         where: { id: dto.variante_id },
       });
       if (!variante) {
-        console.error('[ImagenDebug] Variante no encontrada para imagen:', dto.variante_id);
         throw new NotFoundException('Variante no encontrada');
       }
       if (variante.producto_id !== dto.producto_id) {
@@ -132,13 +127,6 @@ export class ImagenService {
         `productos/${dto.producto_id}/${dto.variante_id ?? 'sin-variante'}`,
         sucursalId,
       );
-    console.log('[ImagenDebug] Cloudinary upload OK:', {
-      url,
-      storage_key,
-      ancho_px,
-      alto_px,
-    });
-
     await this.replaceSpecificImage(dto, sucursalId);
     await this.clearPreviousPrincipalRole(dto, sucursalId);
 
@@ -156,9 +144,7 @@ export class ImagenService {
       variante_id: dto.variante_id ?? null,
       producto_id: dto.producto_id,
     });
-    const imagenGuardada = await this.imagenRepo.save(imagen);
-    console.log('[ImagenDebug] Imagen guardada en DB:', imagenGuardada);
-    return imagenGuardada;
+    return await this.imagenRepo.save(imagen);
   }
 
   async findAll(): Promise<Imagen[]> {

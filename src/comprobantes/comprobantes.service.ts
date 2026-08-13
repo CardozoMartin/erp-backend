@@ -23,6 +23,9 @@ import { NumeradorComprobante } from './entities/numerador-comprobante.entity';
 import { ComprobanteNumeradorService } from './services/comprobante-numerador.service';
 import { ComprobanteItemsService } from './services/comprobante-items.service';
 import { ComprobanteEmailService } from './services/comprobante-email.service';
+import { OfertaService } from 'src/oferta/oferta.service';
+import { QrAfipService } from 'src/pdf/qr-afip.service';
+import { Cliente } from 'src/clientes/entities/cliente.entity';
 
 @Injectable()
 export class ComprobantesService {
@@ -39,7 +42,39 @@ export class ComprobantesService {
     private readonly numeradorService: ComprobanteNumeradorService,
     private readonly itemsService: ComprobanteItemsService,
     private readonly emailService: ComprobanteEmailService,
+    private readonly ofertaService: OfertaService,
+    private readonly qrAfip: QrAfipService,
+    @InjectRepository(Cliente)
+    private readonly clienteRepo: Repository<Cliente>,
   ) {}
+
+  /**
+   * PNG del QR fiscal del comprobante, o null si todavía no tiene CAE.
+   * Se genera localmente para no depender de un servicio externo al imprimir.
+   */
+  async generarQrFiscal(id: string, sucursalId: string): Promise<Buffer | null> {
+    const comprobante = await this.comprobanteRepo.findOne({
+      where: { id, sucursal_id: sucursalId },
+    });
+    if (!comprobante?.cae) return null;
+
+    const [config, cliente] = await Promise.all([
+      this.configuracionService.crearPorDefecto(sucursalId),
+      comprobante.cliente_id
+        ? this.clienteRepo.findOne({ where: { id: comprobante.cliente_id } })
+        : Promise.resolve(null),
+    ]);
+
+    const url = this.qrAfip.construirUrl({
+      comprobante,
+      cuitEmisor: config?.cuit_ticket,
+      puntoVenta: comprobante.punto_venta ?? config?.punto_venta_arca,
+      codigoFiscal: comprobante.codigo_fiscal,
+      cliente,
+    });
+
+    return this.qrAfip.generarBuffer(url);
+  }
 
   async create(
     sucursalId: string,
@@ -60,6 +95,7 @@ export class ComprobantesService {
         sucursalId,
         dto.tipo,
         queryRunner.manager.getRepository(NumeradorComprobante),
+        dto.numero_afip,
       );
 
       // 2.- Validar productos/stock y calcular items
@@ -110,6 +146,7 @@ export class ComprobantesService {
         descuento_total: descuentoTotal,
         recargo_total: recargoTotal,
         total,
+        medio_pago_sugerido_id: dto.medio_pago_sugerido_id ?? null,
         observaciones: dto.observaciones ?? null,
         fecha_vencimiento: dto.fecha_vencimiento
           ? new Date(dto.fecha_vencimiento)
@@ -125,6 +162,18 @@ export class ComprobantesService {
 
       await queryRunner.commitTransaction();
       const creado = await this.findOne(comprobante.id, sucursalId);
+
+      // 6.- Descontar unidades de ofertas con límite de cantidad (fire-and-forget, no bloquea)
+      if (this.itemsService.requiereStockDisponible(dto.tipo)) {
+        for (const item of dto.items) {
+          if (item.producto_id) {
+            this.ofertaService
+              .consumirUnidades(item.producto_id, item.variante_id ?? null, Number(item.cantidad))
+              .catch(() => undefined);
+          }
+        }
+      }
+
       await this.auditoriaService.registrar({
         modulo: 'comprobantes',
         accion: 'CREAR_COMPROBANTE',
@@ -156,7 +205,7 @@ export class ComprobantesService {
   async findAll(sucursalId: string, tipo?: TipoComprobante) {
     return this.comprobanteRepo.find({
       where: tipo ? { sucursal_id: sucursalId, tipo } : { sucursal_id: sucursalId },
-      relations: ['items', 'comprobanteOrigen'],
+      relations: ['items', 'comprobanteOrigen', 'cliente'],
       order: { created_at: 'DESC' },
     });
   }
@@ -164,7 +213,7 @@ export class ComprobantesService {
   async findOne(id: string, sucursalId?: string): Promise<Comprobante> {
     const comprobante = await this.comprobanteRepo.findOne({
       where: sucursalId ? { id, sucursal_id: sucursalId } : { id },
-      relations: ['items', 'comprobanteOrigen'],
+      relations: ['items', 'comprobanteOrigen', 'cliente'],
     });
     if (!comprobante) throw new NotFoundException('Comprobante no encontrado');
     return comprobante;
@@ -270,6 +319,7 @@ export class ComprobantesService {
   ): Promise<Comprobante> {
     const comprobante = await this.findOne(id, sucursalId);
     const antes = this.snapshotComprobante(comprobante);
+    comprobante._estadoAnterior = comprobante.estado;
     comprobante.estado = dto.estado;
     comprobante.observaciones = dto.observaciones ?? comprobante.observaciones;
     await this.comprobanteRepo.save(comprobante);
@@ -422,8 +472,11 @@ export class ComprobantesService {
     };
   }
 
-  private diffItems(antes: any[] = [], despues: any[] = []) {
-    const key = (item: any) => `${item.producto_id ?? item.descripcion}:${item.variante_id ?? ''}`;
+  private diffItems(
+    antes: Array<{ producto_id?: string | number | null; descripcion?: string; variante_id?: string | number | null; cantidad?: number; precio_unitario?: number; subtotal?: number }> = [],
+    despues: typeof antes = [],
+  ) {
+    const key = (item: typeof antes[number]) => `${item.producto_id ?? item.descripcion}:${item.variante_id ?? ''}`;
     const anteriores = new Map(antes.map((item) => [key(item), item]));
     const actuales = new Map(despues.map((item) => [key(item), item]));
     const agregados = despues.filter((item) => !anteriores.has(key(item)));

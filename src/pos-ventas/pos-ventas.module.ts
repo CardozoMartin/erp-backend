@@ -7,6 +7,8 @@ import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { FacturacionModule } from 'src/facturacion/facturacion.module';
 import { ListaPrecioModule } from 'src/lista-precio/lista-precio.module';
+import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
+import { MedioPago } from 'src/pagos-module/entities/medio-pago.entity';
 import { NotasCreditoModule } from 'src/notas-credito/notas-credito.module';
 import { PagosPosModule } from 'src/pagos-pos/pagos-pos.module';
 import { Producto } from 'src/producto/entities/producto.entity';
@@ -16,7 +18,7 @@ import { PosVentasQueryService } from './pos-ventas-query.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Empleado, Producto]),
+    TypeOrmModule.forFeature([Empleado, Producto, MedioPago, ListaPrecio]),
     CajaModule,
     ComprobantesModule,
     PagosPosModule,

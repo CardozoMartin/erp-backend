@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Controller,
   Get,
@@ -14,6 +15,8 @@ import {
 } from './dto/create-sucursal.dto';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 
+@ApiTags('sucursal')
+@ApiBearerAuth('JWT')
 @Controller('sucursales')
 export class SucursalController {
   constructor(private readonly sucursalService: SucursalService) {}

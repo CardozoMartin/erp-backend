@@ -1,13 +1,14 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Controller,
   Get,
   Post,
   Body,
   Patch,
+  Put,
   Param,
   Request,
   UseGuards,
-  Logger,
 } from '@nestjs/common';
 import { ConfiguracionService } from './configuracion.service';
 import { ConfiguracionEmailService } from './configuracion-email.service';
@@ -26,10 +27,10 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 @UseGuards(JwtAuthGuard)
+@ApiTags('configuracion')
+@ApiBearerAuth('JWT')
 @Controller('configuracion')
 export class ConfiguracionController {
-  private readonly logger = new Logger('ConfigPOSDebug');
-
   constructor(
     private readonly configuracionService: ConfiguracionService,
     private readonly configuracionEmailService: ConfiguracionEmailService,
@@ -40,7 +41,6 @@ export class ConfiguracionController {
   @Post()
   @RequiereAlgunoPermiso('admin.servicios', 'config.pos')
   create(@Body() dto: CreateConfiguracionDto, @Request() req) {
-    this.logger.log(`POST /configuracion body=${JSON.stringify(dto)}`);
     return this.configuracionService.create(dto, req.user?.id);
   }
 
@@ -52,7 +52,6 @@ export class ConfiguracionController {
   @Get(':sucursalId')
   @RequiereAlgunoPermiso('admin.servicios', 'config.pos', 'ventas.crear', 'caja.cobrar', 'caja.abrir', 'ventas.ver')
   findBySucursal(@Param('sucursalId') sucursalId: string) {
-    this.logger.log(`GET /configuracion/${sucursalId}`);
     return this.configuracionService.findBySucursal(sucursalId);
   }
 
@@ -63,10 +62,17 @@ export class ConfiguracionController {
     @Body() dto: UpdateConfiguracionDto,
     @Request() req,
   ) {
-    this.logger.log(
-      `PATCH /configuracion/${sucursalId} body=${JSON.stringify(dto)}`,
-    );
     return this.configuracionService.update(sucursalId, dto, req.user?.id);
+  }
+
+  @Put(':sucursalId')
+  @RequiereAlgunoPermiso('admin.servicios', 'config.pos')
+  upsert(
+    @Param('sucursalId') sucursalId: string,
+    @Body() dto: UpdateConfiguracionDto,
+    @Request() req,
+  ) {
+    return this.configuracionService.upsert(sucursalId, dto, req.user?.id);
   }
 
   @Get('email/:sucursalId')

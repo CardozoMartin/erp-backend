@@ -6,12 +6,20 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, MoreThan, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { EmpleadoSucursal } from 'src/empleados/entities/empleado-sucursal.entity';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { frontRoutes } from './front-routes';
+import type { JwtPayload } from './interfaces/jwt-payload.interface';
+import { SesionActiva } from './entities/sesion-activa.entity';
+
+// Duración del access token: 15 minutos
+const ACCESS_TOKEN_TTL = '15m';
+// Duración del refresh token: 30 días
+const REFRESH_TOKEN_DAYS = 30;
 
 @Injectable()
 export class AuthService {
@@ -20,9 +28,31 @@ export class AuthService {
     private readonly empleadoRepo: Repository<Empleado>,
     @InjectRepository(EmpleadoSucursal)
     private readonly empleadoSucursalRepo: Repository<EmpleadoSucursal>,
+    @InjectRepository(SesionActiva)
+    private readonly sesionRepo: Repository<SesionActiva>,
     private readonly jwtService: JwtService,
     private readonly auditoriaService: AuditoriaService,
   ) {}
+
+  private generarRefreshToken(): string {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  private async crearSesion(empleadoId: string, sucursalId: string | null): Promise<string> {
+    const refreshToken = this.generarRefreshToken();
+    const expiraEn = new Date();
+    expiraEn.setDate(expiraEn.getDate() + REFRESH_TOKEN_DAYS);
+
+    const sesion = this.sesionRepo.create({
+      refresh_token: refreshToken,
+      empleado_id: empleadoId,
+      sucursal_id: sucursalId,
+      expira_en: expiraEn,
+      revocado: false,
+    });
+    await this.sesionRepo.save(sesion);
+    return refreshToken;
+  }
 
   private calcularPermisos(empleado: Empleado): string[] {
     const permisos = new Set(
@@ -116,7 +146,8 @@ export class AuthService {
       sucursalId,
     };
 
-    const token = this.jwtService.sign(payload);
+    const token = this.jwtService.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+    const refreshToken = await this.crearSesion(empleado.id, sucursalId);
 
     await this.auditoriaService.registrar({
       modulo: 'auth',
@@ -131,6 +162,7 @@ export class AuthService {
 
     return {
       token,
+      refreshToken,
       empleado: {
         id: empleado.id,
         nombreCompleto: empleado.nombreCompleto,
@@ -146,7 +178,45 @@ export class AuthService {
     };
   }
 
-  async validarToken(payload: any) {
+  async refresh(refreshToken: string) {
+    const sesion = await this.sesionRepo.findOne({
+      where: {
+        refresh_token: refreshToken,
+        revocado: false,
+        expira_en: MoreThan(new Date()),
+      },
+      relations: ['empleado', 'empleado.empleadoRoles', 'empleado.empleadoRoles.rol', 'empleado.empleadoRoles.rol.permisos', 'empleado.permisosExtra', 'empleado.permisosExtra.permiso'],
+    });
+
+    if (!sesion) throw new UnauthorizedException('Sesión inválida o expirada');
+    if (!sesion.empleado.activo) throw new UnauthorizedException('Empleado inactivo');
+
+    const permisos = this.calcularPermisos(sesion.empleado);
+    const rutas = this.calcularRutasPermitidas(permisos);
+    const rutaInicio = this.resolverRutaInicio(sesion.empleado, rutas);
+
+    const payload = {
+      sub: sesion.empleado_id,
+      email: sesion.empleado.email,
+      permisos,
+      sucursalId: sesion.sucursal_id,
+    };
+
+    // Rotar el refresh token — invalida el anterior y emite uno nuevo
+    sesion.revocado = true;
+    await this.sesionRepo.save(sesion);
+    const nuevoRefreshToken = await this.crearSesion(sesion.empleado_id, sesion.sucursal_id);
+
+    return {
+      token: this.jwtService.sign(payload, { expiresIn: ACCESS_TOKEN_TTL }),
+      refreshToken: nuevoRefreshToken,
+      permisos,
+      rutas,
+      rutaInicio,
+    };
+  }
+
+  async validarToken(payload: JwtPayload) {
     const empleado = await this.empleadoRepo.findOne({
       where: { id: payload.sub, activo: true },
     });
@@ -211,8 +281,11 @@ export class AuthService {
       sucursalId,
     };
 
+    const nuevoRefreshToken = await this.crearSesion(empleadoId, sucursalId);
+
     return {
-      token: this.jwtService.sign(payload),
+      token: this.jwtService.sign(payload, { expiresIn: ACCESS_TOKEN_TTL }),
+      refreshToken: nuevoRefreshToken,
       sucursal: {
         id: asignacion.sucursal.id,
         nombre: asignacion.sucursal.nombre,
@@ -223,7 +296,20 @@ export class AuthService {
     };
   }
 
-  async logout(empleadoId: string, sucursalId?: string | null) {
+  async logout(empleadoId: string, sucursalId?: string | null, refreshToken?: string) {
+    if (refreshToken) {
+      await this.sesionRepo.update(
+        { refresh_token: refreshToken, empleado_id: empleadoId },
+        { revocado: true },
+      );
+    } else {
+      // Sin refresh token: revocar todas las sesiones activas del empleado
+      await this.sesionRepo.update(
+        { empleado_id: empleadoId, revocado: false },
+        { revocado: true },
+      );
+    }
+
     await this.auditoriaService.registrar({
       modulo: 'auth',
       accion: 'LOGOUT',
@@ -234,5 +320,11 @@ export class AuthService {
       descripcion: 'Cierre de sesion',
     });
     return { ok: true };
+  }
+
+  async limpiarSesionesExpiradas(): Promise<void> {
+    await this.sesionRepo.delete({
+      expira_en: LessThan(new Date()),
+    });
   }
 }

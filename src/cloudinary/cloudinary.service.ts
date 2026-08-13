@@ -29,12 +29,6 @@ export class CloudinaryService {
     private readonly cloudinaryConfigRepo: Repository<ConfiguracionCloudinarySucursal>,
     private readonly auditoriaService: AuditoriaService,
   ) {
-    const env = this.envCredentials();
-    console.log('[CloudinaryDebug] Config:', {
-      cloud_name: env?.cloud_name ? 'OK' : 'FALTA',
-      api_key: env?.api_key ? 'OK' : 'FALTA',
-      api_secret: env?.api_secret ? 'OK' : 'FALTA',
-    });
   }
 
   async findBySucursal(sucursalId: string): Promise<SafeCloudinaryConfig> {
@@ -114,9 +108,10 @@ export class CloudinaryService {
     cloudinary.config(this.credentialsFromConfig(config));
     try {
       await cloudinary.api.ping();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'error desconocido';
       throw new BadRequestException(
-        `Cloudinary rechazo la configuracion: ${error?.message ?? 'error desconocido'}`,
+        `Cloudinary rechazo la configuracion: ${msg}`,
       );
     }
 
@@ -153,13 +148,6 @@ export class CloudinaryService {
     if (!file) throw new BadRequestException('No se recibio ningun archivo');
 
     cloudinary.config(await this.resolveCredentials(sucursalId));
-    console.log('[CloudinaryDebug] Upload solicitado:', {
-      folder,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size,
-    });
-
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -169,7 +157,6 @@ export class CloudinaryService {
         },
         (error, result: UploadApiResponse) => {
           if (error || !result) {
-            console.error('[CloudinaryDebug] Error al subir imagen:', error);
             return reject(
               new BadRequestException({
                 message: 'Error al subir imagen',

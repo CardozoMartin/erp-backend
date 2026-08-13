@@ -48,11 +48,22 @@ export class OfertaService {
       }
     }
 
+    // Advertir si ya existe una oferta vigente para este producto/variante
+    const ofertaExistente = await this.findVigenteParaProducto(dto.producto_id, dto.variante_id);
+    if (ofertaExistente) {
+      throw new BadRequestException(
+        `Ya existe una oferta vigente para este producto (precio: $${ofertaExistente.precio_oferta}). ` +
+        `Eliminá o desactivá la oferta actual antes de crear una nueva.`,
+      );
+    }
+
     const oferta = this.ofertaRepo.create({
       ...dto,
       producto: producto,
       variante: variante ?? undefined,
       variante_id: dto.variante_id ?? null,
+      cantidad_maxima: dto.cantidad_maxima ?? null,
+      cantidad_vendida: 0,
     } as Partial<Oferta>);
     return this.ofertaRepo.save(oferta);
   }
@@ -79,5 +90,48 @@ export class OfertaService {
   async remove(id: string): Promise<void> {
     const oferta = await this.findOneOrFail(id);
     await this.ofertaRepo.remove(oferta);
+  }
+
+  async findVigenteParaProducto(productoId: string, varianteId?: string): Promise<Oferta | null> {
+    const ahora = new Date();
+
+    const base = (qb: ReturnType<typeof this.ofertaRepo.createQueryBuilder>) =>
+      qb
+        .andWhere('o.activo = true')
+        .andWhere('o.fecha_inicio <= :ahora', { ahora })
+        .andWhere('o.fecha_fin >= :ahora', { ahora })
+        // excluir ofertas agotadas: cantidad_maxima IS NULL (sin límite) o cantidad_vendida < cantidad_maxima
+        .andWhere(
+          '(o.cantidad_maxima IS NULL OR o.cantidad_vendida < o.cantidad_maxima)',
+        )
+        .orderBy('o.precio_oferta', 'ASC');
+
+    if (varianteId) {
+      const ofertaVariante = await base(
+        this.ofertaRepo
+          .createQueryBuilder('o')
+          .where('o.producto_id = :productoId', { productoId })
+          .andWhere('o.variante_id = :varianteId', { varianteId }),
+      ).getOne();
+
+      if (ofertaVariante) return ofertaVariante;
+    }
+
+    return base(
+      this.ofertaRepo
+        .createQueryBuilder('o')
+        .where('o.producto_id = :productoId', { productoId })
+        .andWhere('o.variante_id IS NULL'),
+    ).getOne();
+  }
+
+  // Llamado al confirmar una venta para descontar unidades de la oferta vigente
+  async consumirUnidades(productoId: string, varianteId: string | null, cantidad: number): Promise<void> {
+    const oferta = await this.findVigenteParaProducto(productoId, varianteId ?? undefined);
+    if (!oferta || oferta.cantidad_maxima === null) return;
+
+    await this.ofertaRepo.update(oferta.id, {
+      cantidad_vendida: Math.min(oferta.cantidad_vendida + cantidad, oferta.cantidad_maxima),
+    });
   }
 }

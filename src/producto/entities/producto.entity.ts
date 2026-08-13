@@ -77,6 +77,22 @@ export class Producto {
   @Column({ default: false })
   es_fraccionable!: boolean;
 
+  /**
+   * Alícuota de IVA del producto. El 21% es la general; 10.5% aplica a alimentos
+   * (carne, frutas, verduras, pan, leche) y 0% a exentos (medicamentos, libros).
+   *
+   * Solo se usa al discriminar IVA en Factura A/B: la Factura C de monotributo
+   * manda el total como neto y no lleva nodo <Iva>.
+   */
+  @Column({
+    type: 'decimal',
+    precision: 4,
+    scale: 2,
+    default: 21,
+    comment: 'Alicuota IVA: 21 | 10.5 | 0',
+  })
+  alicuota_iva!: number;
+
   //Relaciones
   @ManyToOne(() => ProductoCategoria, { eager: true, nullable: true })
   @JoinColumn({ name: 'categoria_id' })

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfiguracionCloudinarySucursal } from 'src/cloudinary/entities/configuracion-cloudinary.entity';
 import { MpConfig } from 'src/mercadopago/entities/mp-config.entity';
+import { ArcaConfig } from 'src/arca/entities/arca-config.entity';
 import { Repository } from 'typeorm';
 import { ConfiguracionEmailSucursal } from './entities/configuracion-email.entity';
 
@@ -15,6 +16,7 @@ export interface EstadoServiciosSucursal {
   mercadoPago: EstadoServicioSucursal;
   email: EstadoServicioSucursal;
   cloudinary: EstadoServicioSucursal;
+  arca: EstadoServicioSucursal;
 }
 
 @Injectable()
@@ -26,13 +28,16 @@ export class ConfiguracionServiciosService {
     private readonly cloudinaryRepo: Repository<ConfiguracionCloudinarySucursal>,
     @InjectRepository(MpConfig)
     private readonly mpRepo: Repository<MpConfig>,
+    @InjectRepository(ArcaConfig)
+    private readonly arcaRepo: Repository<ArcaConfig>,
   ) {}
 
   async getEstadoServicios(sucursalId: string): Promise<EstadoServiciosSucursal> {
-    const [email, cloudinary, mercadoPago] = await Promise.all([
+    const [email, cloudinary, mercadoPago, arca] = await Promise.all([
       this.emailRepo.findOne({ where: { sucursal_id: sucursalId } }),
       this.cloudinaryRepo.findOne({ where: { sucursal_id: sucursalId } }),
       this.mpRepo.findOne({ where: { sucursalId } }),
+      this.arcaRepo.findOne({ where: { sucursalId } }),
     ]);
 
     return {
@@ -54,6 +59,11 @@ export class ConfiguracionServiciosService {
             : 'pendiente'
           : 'no_configurado',
         ultimoTestAt: cloudinary?.ultimo_test_at ?? null,
+      },
+      arca: {
+        disponible: arca?.estado === 'activo',
+        estado: this.normalizarEstado(arca?.estado),
+        ultimoTestAt: arca?.ultimoTest ?? null,
       },
     };
   }

@@ -10,6 +10,7 @@ import { StockMovimientosModule } from 'src/stock-movimientos/stock-movimientos.
 import { PagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
 import { Comprobante } from 'src/comprobantes/entities/comprobante.entity';
 import { PdfModule } from 'src/pdf/pdf.module';
+import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PdfModule } from 'src/pdf/pdf.module';
     AuditoriaModule,
     StockMovimientosModule,
     PdfModule,
+    ConfiguracionModule,
   ],
   controllers: [CajaController],
   providers: [CajaService],

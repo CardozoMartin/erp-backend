@@ -14,10 +14,11 @@ import {
 } from './entities/configuracion.entity';
 import { Repository } from 'typeorm';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { ArcaConfig } from 'src/arca/entities/arca-config.entity';
 
 @Injectable()
 export class ConfiguracionService {
-  private readonly logger = new Logger('ConfigPOSDebug');
+  private readonly logger = new Logger(ConfiguracionService.name);
   private readonly textFields = [
     'punto_venta_arca',
     'nombre_fantasia_ticket',
@@ -36,6 +37,8 @@ export class ConfiguracionService {
   constructor(
     @InjectRepository(ConfiguracionSucursal)
     private readonly configuracionRepo: Repository<ConfiguracionSucursal>,
+    @InjectRepository(ArcaConfig)
+    private readonly arcaConfigRepo: Repository<ArcaConfig>,
     private readonly auditoriaService: AuditoriaService,
   ) {}
 
@@ -80,7 +83,6 @@ export class ConfiguracionService {
       this.normalizeDto(createConfiguracionDto),
     );
     const saved = await this.configuracionRepo.save(config);
-    this.logger.log(`Configuracion creada=${JSON.stringify(saved)}`);
     await this.auditoriaService.registrar({
       modulo: 'configuracion',
       accion: 'CREAR_CONFIGURACION_POS',
@@ -102,10 +104,7 @@ export class ConfiguracionService {
       throw new NotFoundException(
         `No hay configuración para la sucursal ${sucursalId}`,
       );
-    this.logger.log(
-      `Configuracion encontrada sucursal=${sucursalId} data=${JSON.stringify(config)}`,
-    );
-    return config;
+    return this.conDatosFiscalesDeArca(config);
   }
 
   findOne(id: number) {
@@ -119,17 +118,10 @@ export class ConfiguracionService {
   ): Promise<ConfiguracionSucursal> {
     const config = await this.findBySucursal(sucursalId);
     const antes = this.snapshotConfig(config);
-    this.logger.log(
-      `Configuracion antes update sucursal=${sucursalId} data=${JSON.stringify(config)}`,
-    );
-    this.logger.log(
-      `Configuracion patch recibido sucursal=${sucursalId} patch=${JSON.stringify(dto)}`,
-    );
-    Object.assign(config, this.normalizeDto(dto, config));
+    const normalizado = this.normalizeDto(dto, config);
+    this.logger.log(`[UPDATE] sucursal=${sucursalId} modo_pos: ${config.modo_pos} → ${normalizado.modo_pos ?? config.modo_pos}`);
+    Object.assign(config, normalizado);
     const saved = await this.configuracionRepo.save(config);
-    this.logger.log(
-      `Configuracion despues update sucursal=${sucursalId} data=${JSON.stringify(saved)}`,
-    );
     await this.auditoriaService.registrar({
       modulo: 'configuracion',
       accion: 'ACTUALIZAR_CONFIGURACION_POS',
@@ -152,17 +144,73 @@ export class ConfiguracionService {
     const existe = await this.configuracionRepo.findOne({
       where: { sucursal_id: sucursalId },
     });
-    if (existe) {
-      this.logger.log(
-        `Configuracion existente usada sucursal=${sucursalId} modo=${existe.modo_pos}`,
-      );
-      return existe;
-    }
+    if (existe) return this.conDatosFiscalesDeArca(existe);
 
     const config = this.configuracionRepo.create({ sucursal_id: sucursalId });
     const saved = await this.configuracionRepo.save(config);
-    this.logger.log(`Configuracion default creada=${JSON.stringify(saved)}`);
-    return saved;
+    return this.conDatosFiscalesDeArca(saved);
+  }
+
+  /**
+   * El CUIT y el punto de venta impresos deben ser los que AFIP autorizó, no una
+   * copia editable a mano: si no coinciden con el certificado, el comprobante y
+   * su QR son inválidos. Cuando ARCA está activo, `arca_config` manda.
+   *
+   * No se persiste — es una vista de lectura. La config guardada sigue siendo la
+   * que el usuario cargó, para no pisarle datos si después desactiva ARCA.
+   */
+  private async conDatosFiscalesDeArca(
+    config: ConfiguracionSucursal,
+  ): Promise<ConfiguracionSucursal> {
+    const arca = await this.arcaConfigRepo.findOne({
+      where: { sucursalId: config.sucursal_id },
+    });
+    if (!arca || arca.estado !== 'activo') return config;
+
+    if (arca.cuit && config.cuit_ticket !== arca.cuit) {
+      this.logger.warn(
+        `Sucursal ${config.sucursal_id}: cuit_ticket="${config.cuit_ticket}" no coincide ` +
+          `con el del certificado ARCA ("${arca.cuit}"). Se imprime el de ARCA.`,
+      );
+      config.cuit_ticket = arca.cuit;
+    }
+    if (arca.puntoVenta) config.punto_venta_arca = arca.puntoVenta;
+
+    return config;
+  }
+
+  /**
+   * Upsert: crea la config si no existe o actualiza si ya existe.
+   * El frontend siempre llama a este endpoint sin necesidad de bifurcar crear/actualizar.
+   */
+  async upsert(
+    sucursalId: string,
+    dto: UpdateConfiguracionDto,
+    empleadoActorId?: string | null,
+  ): Promise<ConfiguracionSucursal> {
+    const existe = await this.configuracionRepo.findOne({
+      where: { sucursal_id: sucursalId },
+    });
+
+    if (!existe) {
+      const config = this.configuracionRepo.create(
+        this.normalizeDto({ sucursal_id: sucursalId, ...dto } as CreateConfiguracionDto),
+      );
+      const saved = await this.configuracionRepo.save(config);
+      await this.auditoriaService.registrar({
+        modulo: 'configuracion',
+        accion: 'CREAR_CONFIGURACION_POS',
+        entidad: 'configuracion_pos',
+        entidad_id: sucursalId,
+        empleado_id: empleadoActorId ?? null,
+        sucursal_id: sucursalId,
+        descripcion: `Configuracion POS creada para sucursal ${sucursalId}`,
+        despues: this.snapshotConfig(saved) as any,
+      });
+      return saved;
+    }
+
+    return this.update(sucursalId, dto, empleadoActorId);
   }
 
   private snapshotConfig(config: ConfiguracionSucursal) {

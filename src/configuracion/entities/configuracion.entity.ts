@@ -49,14 +49,10 @@ export class ConfiguracionSucursal {
   cotizacion_vigencia_horas!: number;
 
   //Punto de venta
-  @Column({ type: 'enum', enum: ModoPOS, default: ModoPOS.SIMPLE })
+  @Column({ type: 'varchar', length: 30, default: ModoPOS.SIMPLE })
   modo_pos!: ModoPOS;
 
-  @Column({
-    type: 'enum',
-    enum: DescuentoStock,
-    default: DescuentoStock.AL_COBRAR,
-  })
+  @Column({ type: 'varchar', length: 30, default: DescuentoStock.AL_COBRAR })
   descuento_stock!: DescuentoStock;
 
   @Column({ default: true })
@@ -90,21 +86,13 @@ export class ConfiguracionSucursal {
   permitir_cuenta_corriente!: boolean;
 
   // -- Impresion de comprobantes
-  @Column({
-    type: 'enum',
-    enum: FormatoImpresionComprobante,
-    default: FormatoImpresionComprobante.TICKET_80MM,
-  })
+  @Column({ type: 'varchar', length: 30, default: FormatoImpresionComprobante.TICKET_80MM })
   formato_impresion_comprobante!: FormatoImpresionComprobante;
 
   @Column({ default: false })
   imprimir_automaticamente!: boolean;
 
-  @Column({
-    type: 'enum',
-    enum: DisenoComprobante,
-    default: DisenoComprobante.BASICO,
-  })
+  @Column({ type: 'varchar', length: 30, default: DisenoComprobante.BASICO })
   diseno_comprobante!: DisenoComprobante;
 
   @Column({ type: 'varchar', length: 120, nullable: true })

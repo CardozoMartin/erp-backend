@@ -24,4 +24,9 @@ export class CreateOfertaDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  cantidad_maxima?: number | null;
 }

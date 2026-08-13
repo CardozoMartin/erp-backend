@@ -26,6 +26,8 @@ import {
   MovimientoCaja,
   TipoMovimientoCaja,
 } from './entities/movimiento-caja.entity';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { ModoPOS } from 'src/configuracion/entities/configuracion.entity';
 
 @Injectable()
 export class CajaService {
@@ -42,6 +44,7 @@ export class CajaService {
     private readonly dataSource: DataSource,
     private readonly auditoriaService: AuditoriaService,
     private readonly stockMovimientosService: StockMovimientosService,
+    private readonly configuracionService: ConfiguracionService,
   ) {}
 
   async abrir(
@@ -49,16 +52,27 @@ export class CajaService {
     empleadoId: string,
     dto: AbrirCajaDto,
   ): Promise<Caja> {
-    // 1. Validamos que el empleado no tenga otra caja abierta en esta sucursal.
-    const cajaAbierta = await this.cajaRepo.findOne({
-      where: {
-        sucursal_id: sucursalId,
-        empleado_id: empleadoId,
-        estado: EstadoCaja.ABIERTA,
-      },
-    });
-    if (cajaAbierta) {
-      throw new BadRequestException('Ya tenes una caja abierta en esta sucursal');
+    // 1. Verificar restricciones según el modo POS configurado
+    const config = await this.configuracionService.crearPorDefecto(sucursalId);
+
+    if (config.modo_pos === ModoPOS.SIMPLE) {
+      // SIMPLE: solo puede existir UNA caja abierta en toda la sucursal
+      const cajaExistente = await this.cajaRepo.findOne({
+        where: { sucursal_id: sucursalId, estado: EstadoCaja.ABIERTA },
+      });
+      if (cajaExistente) {
+        throw new BadRequestException(
+          'El modo SIMPLE solo permite una caja abierta por sucursal. Cerrá la caja existente antes de abrir una nueva.',
+        );
+      }
+    } else {
+      // MULTICAJA / CAJA_CENTRALIZADA / CON_DESPACHO: cada empleado tiene su propia caja
+      const cajaPropia = await this.cajaRepo.findOne({
+        where: { sucursal_id: sucursalId, empleado_id: empleadoId, estado: EstadoCaja.ABIERTA },
+      });
+      if (cajaPropia) {
+        throw new BadRequestException('Ya tenés una caja abierta en esta sucursal');
+      }
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -239,21 +253,21 @@ export class CajaService {
     });
     if (pagoExistente) return;
 
-    const cajaAbierta = await this.cajaRepo.findOne({
-      where: {
-        sucursal_id: datos.sucursalId,
-        estado: EstadoCaja.ABIERTA,
-      },
-      order: { fecha_apertura: 'DESC' },
-    });
-    if (!cajaAbierta) throw new BadRequestException('No hay caja abierta');
-
     const comprobante = await this.comprobanteRepo.findOne({
       where: { id: datos.ventaId, sucursal_id: datos.sucursalId },
     });
     if (!comprobante) {
       throw new NotFoundException('Comprobante de venta no encontrado');
     }
+
+    // Usar la caja ya asignada al comprobante; si no tiene, tomar la más reciente abierta
+    const cajaAbierta = comprobante.caja_id
+      ? await this.cajaRepo.findOne({ where: { id: comprobante.caja_id, estado: EstadoCaja.ABIERTA } })
+      : await this.cajaRepo.findOne({
+          where: { sucursal_id: datos.sucursalId, estado: EstadoCaja.ABIERTA },
+          order: { fecha_apertura: 'DESC' },
+        });
+    if (!cajaAbierta) throw new BadRequestException('No hay caja abierta para registrar el pago');
 
     const mediosPago = await this.pagosService.findAll();
     const medioPagoQr =
@@ -299,6 +313,7 @@ export class CajaService {
         }),
       );
 
+      comprobante._estadoAnterior = comprobante.estado;
       comprobante.estado = EstadoComprobante.COBRADA;
       comprobante.caja_id = cajaAbierta.id;
       await queryRunner.manager.save(comprobante);
@@ -450,6 +465,24 @@ export class CajaService {
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('La caja ya esta cerrada');
     }
+
+    // 2. Bloquear cierre si hay ventas PENDIENTE_COBRO asignadas a esta caja específica
+    //    o que pertenecen a la sucursal y no tienen caja asignada aún (ventas flotantes).
+    const [ventasEnEstaCaja, ventasSinCaja] = await Promise.all([
+      this.comprobanteRepo.count({
+        where: { caja_id: cajaId, estado: EstadoComprobante.PENDIENTE_COBRO },
+      }),
+      this.comprobanteRepo.count({
+        where: { sucursal_id: sucursalId, caja_id: null as unknown as string, estado: EstadoComprobante.PENDIENTE_COBRO },
+      }),
+    ]);
+    const ventasPendientes = ventasEnEstaCaja + ventasSinCaja;
+    if (ventasPendientes > 0) {
+      throw new BadRequestException(
+        `No podés cerrar la caja: hay ${ventasPendientes} venta${ventasPendientes > 1 ? 's' : ''} pendiente${ventasPendientes > 1 ? 's' : ''} de cobro. Cobralas o cancelalas antes de cerrar.`,
+      );
+    }
+
     const antes = this.snapshotCaja(caja);
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -582,9 +615,18 @@ export class CajaService {
 
     const total = movimientos.reduce((sum, movimiento) => {
       const monto = Number(movimiento.monto ?? 0);
-      if (movimiento.tipo === TipoMovimientoCaja.CIERRE) return sum;
-      if (movimiento.tipo === TipoMovimientoCaja.EGRESO) return sum - monto;
-      return sum + monto;
+      switch (movimiento.tipo) {
+        case TipoMovimientoCaja.CIERRE:
+          return sum;
+        case TipoMovimientoCaja.EGRESO:
+          return sum - monto;
+        case TipoMovimientoCaja.AJUSTE:
+          // El monto del ajuste ya tiene signo: positivo suma, negativo resta
+          return sum + monto;
+        default:
+          // APERTURA, COBRO, INGRESO_MANUAL suman
+          return sum + monto;
+      }
     }, 0);
 
     return Number(total.toFixed(2));

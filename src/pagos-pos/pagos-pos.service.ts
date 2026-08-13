@@ -141,6 +141,7 @@ export class PagosPosService {
       }
 
       // 8. Marcamos el comprobante como cobrado y liberamos el bloqueo de cajero.
+      comprobante._estadoAnterior = comprobante.estado;
       comprobante.estado = EstadoComprobante.COBRADA;
       comprobante.caja_id = dto.caja_id;
       comprobante.empleado_cajero_id = empleadoId;
@@ -265,6 +266,7 @@ export class PagosPosService {
         );
       }
 
+      comprobante._estadoAnterior = comprobante.estado;
       comprobante.estado = EstadoComprobante.COBRADA;
       comprobante.caja_id = null;
       comprobante.empleado_cajero_id = empleadoId;

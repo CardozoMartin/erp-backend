@@ -18,6 +18,7 @@ import { ProductoSucursal } from './entities/producto-sucursal-entity';
 import { Producto } from './entities/producto.entity';
 import { ProductoController } from './producto.controller';
 import { ProductoService } from './producto.service';
+import { ProductoImportacionService } from './producto-importacion.service';
 
 @Module({
   imports: [
@@ -41,7 +42,7 @@ import { ProductoService } from './producto.service';
     ]),
   ],
   controllers: [ProductoController],
-  providers: [ProductoService],
+  providers: [ProductoService, ProductoImportacionService],
   exports: [ProductoService], // exportamos por si otros módulos (ventas, pos) necesitan consultar
 })
 export class ProductoModule {}

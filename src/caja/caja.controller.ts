@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -9,7 +10,7 @@ import {
   Request,
   Res,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 import {
@@ -22,6 +23,8 @@ import {
 import { CajaService } from './caja.service';
 import { PdfService } from 'src/pdf/pdf.service';
 
+@ApiTags('caja')
+@ApiBearerAuth('JWT')
 @Controller('caja')
 export class CajaController {
   constructor(
@@ -29,12 +32,9 @@ export class CajaController {
     private readonly pdfService: PdfService,
   ) {}
 
-  private puedeVerTodasLasCajas(req: any): boolean {
-    return (
-      req.user?.permisos?.includes('reportes.ver') ||
-      req.user?.permisos?.includes('reportes.caja') ||
-      req.user?.permisos?.includes('config.pos')
-    );
+  private puedeVerTodasLasCajas(req: ExpressRequest & { user?: { permisos?: string[] } }): boolean {
+    const p = req.user?.permisos ?? [];
+    return p.includes('reportes.ver') || p.includes('reportes.caja') || p.includes('config.pos');
   }
 
   @Post('abrir')

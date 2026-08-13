@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 // clientes/clientes.controller.ts
 import {
   Body,
@@ -32,6 +33,8 @@ import { SucursalGuard } from 'src/sucursal/decorators/sucursal.guard';
 import { PdfService } from 'src/pdf/pdf.service';
 
 @UseGuards(JwtAuthGuard, SucursalGuard)
+@ApiTags('clientes')
+@ApiBearerAuth('JWT')
 @Controller('clientes')
 export class ClientesController {
   constructor(

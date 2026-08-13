@@ -180,9 +180,25 @@ export class ConfiguracionEmailService {
     return { ok: true };
   }
 
+  /**
+   * Si MASTER_ENCRYPT_KEY cambia, la password guardada queda indescifrable y AES-GCM
+   * falla al validar el authTag. Sin este catch el error sube como 500 opaco y parece
+   * un problema de SMTP, cuando en realidad basta con volver a guardar la password.
+   */
+  private descifrarPassword(config: ConfiguracionEmailSucursal): string {
+    try {
+      return this.cifrado.descifrar(config.password_encriptado);
+    } catch {
+      throw new BadRequestException(
+        'La contraseña de email guardada no se puede descifrar (la clave de cifrado del servidor cambió). ' +
+          'Volvé a cargarla en Configuracion → Email para regenerarla.',
+      );
+    }
+  }
+
   // 2.- Crea el Transporter de Nodemailer según la seguridad configurada
   private crearTransporter(config: ConfiguracionEmailSucursal): Transporter {
-    const password = this.cifrado.descifrar(config.password_encriptado);
+    const password = this.descifrarPassword(config);
 
     const secure = config.seguridad === SeguridadEmail.SSL;
     const requireTLS = config.seguridad === SeguridadEmail.STARTTLS;

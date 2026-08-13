@@ -24,7 +24,6 @@ export class ProductoCategoriaController {
   @Post()
   @RequierePermiso('categorias.crear')
   create(@Body() createProductoCategoriaDto: CreateProductoCategoriaDto) {
-    console.log('DTO recibido:', createProductoCategoriaDto);
     return this.productoCategoriaService.create(createProductoCategoriaDto);
   }
 

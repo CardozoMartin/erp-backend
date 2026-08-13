@@ -4,10 +4,12 @@ import { ConfiguracionModule } from 'src/configuracion/configuracion.module';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { ListaPrecioModule } from 'src/lista-precio/lista-precio.module';
 import { PdfModule } from 'src/pdf/pdf.module';
+import { OfertaModule } from 'src/oferta/oferta.module';
 import { Cliente } from 'src/clientes/entities/cliente.entity';
 import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { Stock } from 'src/stock/entities/stock.entity';
+import { Lote } from 'src/lote/entities/lote.entity';
 import { ConfiguracionSucursal } from 'src/configuracion/entities/configuracion.entity';
 import { ComprobantesController } from './comprobantes.controller';
 import { ComprobantesService } from './comprobantes.service';
@@ -26,6 +28,7 @@ import { ComprobanteEmailService } from './services/comprobante-email.service';
       NumeradorComprobante,
       Producto,
       Stock,
+      Lote,
       ProductoSucursal,
       Cliente,
       ConfiguracionSucursal,
@@ -34,6 +37,7 @@ import { ComprobanteEmailService } from './services/comprobante-email.service';
     ConfiguracionModule,
     ListaPrecioModule,
     PdfModule,
+    OfertaModule,
   ],
   controllers: [ComprobantesController],
   providers: [

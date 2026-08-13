@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { CreateStockDto, AjustarStockDto } from './dto/create-stock.dto';
@@ -5,6 +6,8 @@ import { UpdateStockDto } from './dto/update-stock.dto';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
 
+@ApiTags('stock')
+@ApiBearerAuth('JWT')
 @Controller('stock')
 export class StockController {
   constructor(private readonly stockService: StockService) {}

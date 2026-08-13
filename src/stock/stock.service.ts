@@ -148,19 +148,31 @@ export class StockService {
 
   // Devuelve stocks con cantidad <= cantidad_minima (y cantidad_minima > 0)
   async alertasStock(sucursalId?: string): Promise<Stock[]> {
-    const where: Parameters<typeof this.stockRepo.find>[0] = {
-      where: {
-        cantidad_minima: MoreThan(0),
-      },
-      relations: ['producto', 'variante'],
-      order: { cantidad: 'ASC' },
-    };
-
-    // Filtrar por sucursal si se especifica
     const qb = this.stockRepo
       .createQueryBuilder('stock')
       .leftJoinAndSelect('stock.producto', 'producto')
       .leftJoinAndSelect('stock.variante', 'variante')
+      .select([
+        'stock.id',
+        'stock.producto_id',
+        'stock.variante_id',
+        'stock.sucursal_id',
+        'stock.cantidad',
+        'stock.cantidad_minima',
+        'stock.deposito',
+        'stock.pasillo',
+        'stock.estante',
+        'stock.sector',
+        'stock.codigo_ubicacion',
+        'stock.ubicacion_referencia',
+        'producto.id',
+        'producto.nombre',
+        'producto.codigo_barras',
+        'producto.unidad_venta',
+        'producto.es_fraccionable',
+        'variante.id',
+        'variante.sku',
+      ])
       .where('stock.cantidad_minima > 0')
       .andWhere('stock.cantidad <= stock.cantidad_minima')
       .orderBy('stock.cantidad', 'ASC');

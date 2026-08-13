@@ -11,18 +11,19 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { EmpleadoSucursal } from 'src/empleados/entities/empleado-sucursal.entity';
+import { SesionActiva } from './entities/sesion-activa.entity';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 
 @Module({
   imports: [
     PassportModule,
-    TypeOrmModule.forFeature([Empleado, EmpleadoSucursal]),
+    TypeOrmModule.forFeature([Empleado, EmpleadoSucursal, SesionActiva]),
     AuditoriaModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow('JWT_SECRET'),
-        signOptions: { expiresIn: '8h' },
+        signOptions: { expiresIn: '15m' },
       }),
     }),
     EmpleadosModule,

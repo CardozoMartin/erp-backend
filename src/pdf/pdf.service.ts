@@ -7,6 +7,8 @@ import { Comprobante, TipoComprobante } from 'src/comprobantes/entities/comproba
 import { ConfiguracionSucursal } from 'src/configuracion/entities/configuracion.entity';
 import { Cliente } from 'src/clientes/entities/cliente.entity';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { QrAfipService } from './qr-afip.service';
 
 // Paleta de colores y constantes de layout
 const COLOR_PRIMARIO   = '#1a237e'; // azul oscuro
@@ -28,27 +30,41 @@ export class PdfService {
     private readonly clienteRepo: Repository<Cliente>,
     @InjectRepository(Empleado)
     private readonly empleadoRepo: Repository<Empleado>,
+    private readonly configuracionService: ConfiguracionService,
+    private readonly qrAfip: QrAfipService,
   ) {}
 
   // 1.- Punto de entrada público: busca el comprobante y genera el PDF
   async generarComprobantePdf(comprobanteId: string, sucursalId: string): Promise<Buffer> {
     const comprobante = await this.comprobanteRepo.findOne({
       where: { id: comprobanteId, sucursal_id: sucursalId },
-      relations: ['items'],
+      relations: ['items', 'cliente'],
     });
     if (!comprobante) {
       throw new NotFoundException(`Comprobante ${comprobanteId} no encontrado`);
     }
 
-    // 2.- Carga datos relacionados en paralelo
+    // 2.- Carga datos relacionados en paralelo.
+    // La config se pide al servicio (no al repo) para que el CUIT impreso sea el
+    // del certificado ARCA y no la copia editable de configuracion_sucursal.
     const [config, cliente] = await Promise.all([
-      this.configRepo.findOne({ where: { sucursal_id: sucursalId } }),
+      this.configuracionService.crearPorDefecto(sucursalId),
       comprobante.cliente_id
         ? this.clienteRepo.findOne({ where: { id: comprobante.cliente_id } })
         : Promise.resolve(null),
     ]);
 
-    return this.construirPdf(comprobante, config ?? null, cliente ?? null);
+    // 3.- QR fiscal (RG 4892). Se genera acá porque construirPdf es sincrónico.
+    const qrUrl = this.qrAfip.construirUrl({
+      comprobante,
+      cuitEmisor: config?.cuit_ticket,
+      puntoVenta: comprobante.punto_venta ?? config?.punto_venta_arca,
+      codigoFiscal: comprobante.codigo_fiscal,
+      cliente,
+    });
+    const qr = await this.qrAfip.generarBuffer(qrUrl);
+
+    return this.construirPdf(comprobante, config ?? null, cliente ?? null, qr);
   }
 
   // 3.- Construye el documento PDF y lo retorna como Buffer
@@ -56,6 +72,7 @@ export class PdfService {
     comprobante: Comprobante,
     config: ConfiguracionSucursal | null,
     cliente: Cliente | null,
+    qr: Buffer | null = null,
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
@@ -70,7 +87,7 @@ export class PdfService {
       this.dibujarDatosCliente(doc, cliente);
       this.dibujarTablaItems(doc, comprobante);
       this.dibujarTotales(doc, comprobante);
-      this.dibujarPiePagina(doc, comprobante, config);
+      this.dibujarPiePagina(doc, comprobante, config, qr);
 
       doc.end();
     });
@@ -291,23 +308,54 @@ export class PdfService {
     doc: PDFKit.PDFDocument,
     comprobante: Comprobante,
     config: ConfiguracionSucursal | null,
+    qr: Buffer | null = null,
   ) {
-    const yPie = 780;
+    // El QR ocupa alto: se sube el pie para que entre sin pisar los totales.
+    const LADO_QR = 70;
+    const yPie = qr ? 730 : 780;
 
     doc.moveTo(MARGEN, yPie).lineTo(MARGEN + ANCHO_UTIL, yPie)
       .strokeColor(COLOR_LINEA).lineWidth(1).stroke();
 
     let y = yPie + 6;
 
+    // QR fiscal a la izquierda; el texto del CAE se corre para no superponerse
+    const xTexto = qr ? MARGEN + LADO_QR + 12 : MARGEN;
+    if (qr) {
+      doc.image(qr, MARGEN, y, { width: LADO_QR, height: LADO_QR });
+    }
+
     // CAE si existe
     if (comprobante.cae) {
       const vto = comprobante.cae_vencimiento
         ? new Date(comprobante.cae_vencimiento).toLocaleDateString('es-AR')
         : '';
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(COLOR_TEXTO)
+        .text(`CAE: ${comprobante.cae}`, xTexto, y);
       doc.fontSize(8).font('Helvetica').fillColor(COLOR_SUBTEXTO)
-        .text(`CAE: ${comprobante.cae}  |  Vto. CAE: ${vto}`, MARGEN, y);
-      y += 12;
+        .text(`Vto. CAE: ${vto}`, xTexto, y + 11);
+      doc.fontSize(7).fillColor(COLOR_SUBTEXTO)
+        .text('Comprobante autorizado por ARCA (AFIP)', xTexto, y + 22);
+      y += 34;
     }
+
+    // Datos fiscales del emisor exigidos en el comprobante impreso
+    const datosFiscales = [
+      config?.razon_social_ticket,
+      config?.ingresos_brutos_ticket ? `IIBB: ${config.ingresos_brutos_ticket}` : null,
+      config?.inicio_actividades_ticket
+        ? `Inicio de actividades: ${this.formatFechaSimple(config.inicio_actividades_ticket)}`
+        : null,
+    ].filter(Boolean).join('  ·  ');
+
+    if (datosFiscales) {
+      doc.fontSize(7).font('Helvetica').fillColor(COLOR_SUBTEXTO)
+        .text(datosFiscales, xTexto, y, { width: ANCHO_UTIL - (xTexto - MARGEN) });
+      y += 11;
+    }
+
+    // El pie queda por debajo del QR aunque el texto haya sido más corto
+    y = Math.max(y, yPie + 6 + (qr ? LADO_QR : 0)) + 4;
 
     // Mensaje personalizado
     const mensaje = config?.mensaje_boleta ?? config?.mensaje_ticket;
@@ -336,6 +384,18 @@ export class PdfService {
       [TipoComprobante.NOTA_CREDITO]: 'NOTA DE CRÉDITO',
     };
     return labels[tipo] ?? tipo;
+  }
+
+  /**
+   * El inicio de actividades se guarda como texto "YYYY-MM-DD". Pasarlo por `new Date()`
+   * lo interpreta como medianoche UTC y en UTC-3 retrocede un día (2024-01-01 → 31/12/2023),
+   * asi que se reordena como texto sin construir un Date.
+   */
+  private formatFechaSimple(valor: string): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(valor.trim());
+    if (!match) return valor;
+    const [, anio, mes, dia] = match;
+    return `${Number(dia)}/${Number(mes)}/${anio}`;
   }
 
   private formatPeso(valor: number | string): string {

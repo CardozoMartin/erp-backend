@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { OfertaService } from './oferta.service';
 import { CreateOfertaDto } from './dto/create-oferta.dto';
 import { UpdateOfertaDto } from './dto/update-oferta.dto';
@@ -18,6 +18,15 @@ export class OfertaController {
   @RequierePermiso('ofertas.ver')
   findAll() {
     return this.ofertaService.findAll();
+  }
+
+  @Get('vigente/:productoId')
+  @RequierePermiso('ofertas.ver')
+  findVigente(
+    @Param('productoId') productoId: string,
+    @Query('varianteId') varianteId?: string,
+  ) {
+    return this.ofertaService.findVigenteParaProducto(productoId, varianteId);
   }
 
   @Get(':id')

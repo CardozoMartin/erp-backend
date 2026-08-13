@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -22,6 +23,8 @@ import { UpdateComprobanteDto } from './dto/update-comprobante.dto';
 import { TipoComprobante } from './entities/comprobante.entity';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 
+@ApiTags('comprobantes')
+@ApiBearerAuth('JWT')
 @Controller('comprobantes')
 export class ComprobantesController {
   constructor(
@@ -90,6 +93,31 @@ export class ComprobantesController {
       'Content-Length': buffer.length,
     });
     res.end(buffer);
+  }
+
+  /**
+   * QR fiscal (RG 4892) como PNG. Se sirve desde el backend para que la factura
+   * no dependa de un generador externo: sin internet igual sale con QR.
+   */
+  @Get(':id/qr')
+  @RequierePermiso('ventas.ver')
+  async qrFiscal(
+    @Param('id') id: string,
+    @SucursalActiva() sucursalId: string,
+    @Res() res: Response,
+  ) {
+    const png = await this.comprobantesService.generarQrFiscal(id, sucursalId);
+    if (!png) {
+      // Sin CAE todavía no hay comprobante autorizado, así que no hay QR válido
+      res.status(404).json({ ok: false, mensaje: 'El comprobante no tiene CAE' });
+      return;
+    }
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Length': png.length,
+      'Cache-Control': 'private, max-age=86400',
+    });
+    res.end(png);
   }
 
   @Post(':id/enviar-email')

@@ -100,6 +100,7 @@ type SeedResult = {
     listasPrecioCreadas: number;
     listasPrecioExistentes: number;
     configuracionesActualizadas: number;
+    configuracionesExistentes: number;
   };
 };
 
@@ -494,7 +495,7 @@ export class AppSeedService {
         `Datos POS seed productos creados: ${result.datosPos.productosCreados}, existentes: ${result.datosPos.productosExistentes}, stock creados: ${result.datosPos.stockCreados}`,
       );
       this.logger.log(
-        `Listas precio seed creadas: ${result.datosPos.listasPrecioCreadas}, existentes: ${result.datosPos.listasPrecioExistentes}, configuraciones POS actualizadas: ${result.datosPos.configuracionesActualizadas}`,
+        `Listas precio seed creadas: ${result.datosPos.listasPrecioCreadas}, existentes: ${result.datosPos.listasPrecioExistentes}, configuraciones POS creadas: ${result.datosPos.configuracionesActualizadas}, respetadas: ${result.datosPos.configuracionesExistentes}`,
       );
     }
 
@@ -513,6 +514,7 @@ export class AppSeedService {
         listasPrecioCreadas: 0,
         listasPrecioExistentes: 0,
         configuracionesActualizadas: 0,
+        configuracionesExistentes: 0,
       };
     }
 
@@ -558,15 +560,11 @@ export class AppSeedService {
         );
         productosCreados += 1;
       } else {
+        // El producto ya existe: no se le tocan los precios ni la alicuota, que
+        // pueden haber sido editados desde la UI. Solo se completan los vinculos
+        // que falten y se garantiza que siga visible en el POS.
         producto.activo = true;
         producto.activo_pos = true;
-        producto.precio_base = productoSeed.precio;
-        producto.precio_costo = productoSeed.costo;
-        producto.precio_venta = productoSeed.precio;
-        producto.margen_ganancia = this.calcularMargen(
-          productoSeed.costo,
-          productoSeed.precio,
-        );
         producto.categoria_id = producto.categoria_id ?? categoria.id;
         producto.marca_id = producto.marca_id ?? marca.id;
         producto = await this.productoRepo.save(producto);
@@ -596,13 +594,22 @@ export class AppSeedService {
     }
 
     let configuracionesActualizadas = 0;
+    let configuracionesExistentes = 0;
     for (const [index, sucursal] of sucursalesActivas.entries()) {
       const existente = await this.configuracionRepo.findOne({
         where: { sucursal_id: sucursal.id },
       });
+
+      // Solo se siembran configuraciones faltantes: si la sucursal ya tiene una,
+      // gana lo que el usuario guardo desde la UI (formato de impresion, CUIT,
+      // impresion automatica). Para regenerarla hay que borrar la fila primero.
+      if (existente) {
+        configuracionesExistentes += 1;
+        continue;
+      }
+
       await this.configuracionRepo.save(
         this.configuracionRepo.create({
-          ...existente,
           sucursal_id: sucursal.id,
           cotizacion_vigencia_horas: 24,
           modo_pos:
@@ -656,6 +663,7 @@ export class AppSeedService {
       listasPrecioCreadas,
       listasPrecioExistentes,
       configuracionesActualizadas,
+      configuracionesExistentes,
     };
   }
 

@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 // producto/producto.controller.ts
 import {
   Body,
@@ -9,7 +10,13 @@ import {
   Post,
   Query,
   Request,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import {
   SucursalActiva,
@@ -18,10 +25,16 @@ import {
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { ProductoService } from './producto.service';
+import { ProductoImportacionService } from './producto-importacion.service';
 
+@ApiTags('productos')
+@ApiBearerAuth('JWT')
 @Controller('producto')
 export class ProductoController {
-  constructor(private readonly productoService: ProductoService) {}
+  constructor(
+    private readonly productoService: ProductoService,
+    private readonly importacionService: ProductoImportacionService,
+  ) {}
 
   private puedeVerCosto(permisos: string[] = []) {
     return permisos.includes('productos.ver_costos');
@@ -214,5 +227,30 @@ export class ProductoController {
       },
       req.user?.id,
     );
+  }
+
+  // ── Importación desde Excel ──────────────────────────────────────────────────
+
+  @Get('importar/plantilla')
+  @RequierePermiso('productos.crear')
+  async descargarPlantilla(@Res() res: Response) {
+    const buffer = await this.importacionService.generarPlantilla();
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="plantilla-importacion-productos.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  @Post('importar')
+  @RequierePermiso('productos.crear')
+  @UseInterceptors(FileInterceptor('archivo', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  importarDesdeExcel(
+    @UploadedFile() archivo: Express.Multer.File,
+    @SucursalActiva() sucursalId: string,
+    @Request() req,
+  ) {
+    if (!archivo) throw new Error('Se requiere un archivo Excel');
+    return this.importacionService.importar(archivo.buffer, sucursalId, req.user?.id);
   }
 }

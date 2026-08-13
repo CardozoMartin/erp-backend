@@ -10,6 +10,7 @@ import { ConfiguracionEmailSucursal } from './entities/configuracion-email.entit
 import { ConfiguracionSucursal } from './entities/configuracion.entity';
 import { ConfiguracionCloudinarySucursal } from 'src/cloudinary/entities/configuracion-cloudinary.entity';
 import { MpConfig } from 'src/mercadopago/entities/mp-config.entity';
+import { ArcaConfig } from 'src/arca/entities/arca-config.entity';
 import { SucursalModule } from 'src/sucursal/sucursal.module';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
@@ -22,6 +23,7 @@ import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
       ConfiguracionEmailSucursal,
       ConfiguracionCloudinarySucursal,
       MpConfig,
+      ArcaConfig,
     ]),
     SucursalModule,
     AuditoriaModule,

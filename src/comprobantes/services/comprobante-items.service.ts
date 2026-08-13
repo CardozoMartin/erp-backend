@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import { ListaPrecioService } from 'src/lista-precio/lista-precio.service';
 import { ListaPrecio } from 'src/lista-precio/entities/lista-precio.entity';
 import { ProductoSucursal } from 'src/producto/entities/producto-sucursal-entity';
 import { Producto } from 'src/producto/entities/producto.entity';
 import { Stock } from 'src/stock/entities/stock.entity';
+import { Lote } from 'src/lote/entities/lote.entity';
 import { CreateComprobanteItemDto } from '../dto/create-comprobante.dto';
 import { ComprobanteItem } from '../entities/comprobante-item.entity';
 import { TipoComprobante } from '../entities/comprobante.entity';
@@ -17,6 +18,8 @@ export class ComprobanteItemsService {
     private readonly productoRepo: Repository<Producto>,
     @InjectRepository(Stock)
     private readonly stockRepo: Repository<Stock>,
+    @InjectRepository(Lote)
+    private readonly loteRepo: Repository<Lote>,
     @InjectRepository(ProductoSucursal)
     private readonly productoSucursalRepo: Repository<ProductoSucursal>,
     private readonly listaPrecioService: ListaPrecioService,
@@ -104,6 +107,17 @@ export class ComprobanteItemsService {
             `Stock insuficiente para "${producto.nombre}". Disponible: ${cantidadDisponible}`,
           );
         }
+
+        // 4b.- Si el producto controla vencimiento, validar que haya lotes vigentes suficientes
+        if (producto.tiene_vencimiento) {
+          await this.validarLotesVigentes(
+            item.producto_id,
+            item.variante_id ?? null,
+            sucursalId,
+            Number(item.cantidad),
+            producto.nombre,
+          );
+        }
       }
 
       // 5.- Calcular precio desde lista de precios si aplica
@@ -158,5 +172,78 @@ export class ComprobanteItemsService {
 
   round(value: number): number {
     return Number(Number(value).toFixed(2));
+  }
+
+  private async validarLotesVigentes(
+    productoId: string,
+    varianteId: string | null,
+    sucursalId: string,
+    cantidadSolicitada: number,
+    nombreProducto: string,
+  ): Promise<void> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const lotes = await this.loteRepo.find({
+      where: {
+        producto_id: productoId,
+        variante_id: varianteId ?? IsNull(),
+        sucursal_id: sucursalId,
+        fecha_vencimiento: MoreThan(hoy),
+      },
+    });
+
+    // Si no hay ningún lote vigente, también verificar con sucursal_id null (stock general)
+    const lotesGenerales =
+      lotes.length === 0
+        ? await this.loteRepo.find({
+            where: {
+              producto_id: productoId,
+              variante_id: varianteId ?? IsNull(),
+              sucursal_id: IsNull(),
+              fecha_vencimiento: MoreThan(hoy),
+            },
+          })
+        : [];
+
+    const todosMisLotes = [...lotes, ...lotesGenerales];
+
+    if (todosMisLotes.length === 0) {
+      // Verificar si existen lotes pero todos están vencidos
+      const lotesVencidos = await this.loteRepo.count({
+        where: {
+          producto_id: productoId,
+          variante_id: varianteId ?? IsNull(),
+          fecha_vencimiento: LessThan(hoy),
+        },
+      });
+
+      if (lotesVencidos > 0) {
+        throw new BadRequestException(
+          `No se puede vender "${nombreProducto}": todos los lotes están vencidos`,
+        );
+      }
+      // Sin lotes registrados: el control de vencimiento está activo pero sin lotes cargados
+      throw new BadRequestException(
+        `No se puede vender "${nombreProducto}": el producto requiere control de vencimiento pero no tiene lotes cargados`,
+      );
+    }
+
+    const stockVigente = todosMisLotes.reduce(
+      (sum, lote) => sum + Number(lote.cantidad),
+      0,
+    );
+
+    if (stockVigente < cantidadSolicitada) {
+      const fechaMasProxima = todosMisLotes
+        .map((l) => new Date(l.fecha_vencimiento))
+        .sort((a, b) => a.getTime() - b.getTime())[0]
+        .toLocaleDateString('es-AR');
+
+      throw new BadRequestException(
+        `Stock vigente insuficiente para "${nombreProducto}". ` +
+          `Disponible en lotes no vencidos: ${stockVigente} (próximo vence: ${fechaMasProxima})`,
+      );
+    }
   }
 }

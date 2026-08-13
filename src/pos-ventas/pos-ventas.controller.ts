@@ -1,4 +1,6 @@
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { EstadoComprobante, TipoComprobante } from 'src/comprobantes/entities/comprobante.entity';
 import { RequierePermiso } from 'src/auth/decorators/requiere-permiso.decorator';
 import { SucursalActiva } from 'src/sucursal/decorators/sucursales-activas.decorator';
@@ -15,16 +17,15 @@ import {
 } from './dto/pos-venta.dto';
 import { PosVentasService } from './pos-ventas.service';
 
+@ApiTags('pos-ventas')
+@ApiBearerAuth('JWT')
 @Controller('pos-ventas')
 export class PosVentasController {
   constructor(private readonly posVentasService: PosVentasService) {}
 
-  private puedeVerTodasLasVentas(req: any): boolean {
-    return (
-      req.user?.permisos?.includes('reportes.ver') ||
-      req.user?.permisos?.includes('reportes.ventas') ||
-      req.user?.permisos?.includes('config.pos')
-    );
+  private puedeVerTodasLasVentas(req: ExpressRequest & { user?: { permisos?: string[] } }): boolean {
+    const p = req.user?.permisos ?? [];
+    return p.includes('reportes.ver') || p.includes('reportes.ventas') || p.includes('config.pos');
   }
 
   @Post()
