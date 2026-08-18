@@ -20,6 +20,9 @@ export const rolesSeed: RoleSeed[] = [
       'clientes.ver',
       'clientes.cargar',
       'stock.ver',
+      // El POS pide GET /pagos/activos al cargar, incluso para el vendedor:
+      // sin este permiso la pantalla entera cae con 403.
+      'medios_pago.ver',
     ],
   },
   {
@@ -37,6 +40,7 @@ export const rolesSeed: RoleSeed[] = [
       'productos.ver',
       'clientes.ver',
       'stock.ver',
+      'medios_pago.ver',
     ],
   },
   {
@@ -59,6 +63,7 @@ export const rolesSeed: RoleSeed[] = [
       'clientes.ver',
       'clientes.cargar',
       'stock.ver',
+      'medios_pago.ver',
     ],
   },
   {

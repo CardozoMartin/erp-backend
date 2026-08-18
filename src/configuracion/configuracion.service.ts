@@ -119,6 +119,7 @@ export class ConfiguracionService {
     const config = await this.findBySucursal(sucursalId);
     const antes = this.snapshotConfig(config);
     const normalizado = this.normalizeDto(dto, config);
+    await this.validarCambioDeModo(sucursalId, config.modo_pos, normalizado.modo_pos);
     this.logger.log(`[UPDATE] sucursal=${sucursalId} modo_pos: ${config.modo_pos} → ${normalizado.modo_pos ?? config.modo_pos}`);
     Object.assign(config, normalizado);
     const saved = await this.configuracionRepo.save(config);
@@ -138,6 +139,31 @@ export class ConfiguracionService {
       },
     });
     return saved;
+  }
+
+  /**
+   * SIMPLE admite una sola caja abierta por sucursal. Si se cambia a SIMPLE con
+   * varias abiertas queda un estado que el propio backend considera invalido:
+   * nadie puede abrir caja hasta cerrarlas, y el arqueo mezcla turnos distintos.
+   * Se consulta por query para no inyectar CajaService, que ya depende de este.
+   */
+  private async validarCambioDeModo(
+    sucursalId: string,
+    modoActual: ModoPOS,
+    modoNuevo?: ModoPOS,
+  ): Promise<void> {
+    if (!modoNuevo || modoNuevo === modoActual) return;
+    if (modoNuevo !== ModoPOS.SIMPLE) return;
+
+    const abiertas = await this.configuracionRepo.manager
+      .getRepository('cajas')
+      .count({ where: { sucursal_id: sucursalId, estado: 'ABIERTA' } });
+
+    if (abiertas > 1) {
+      throw new ConflictException(
+        `No se puede pasar a modo SIMPLE con ${abiertas} cajas abiertas: este modo admite una sola por sucursal. Cerrá las cajas y volvé a intentar.`,
+      );
+    }
   }
 
   async crearPorDefecto(sucursalId: string): Promise<ConfiguracionSucursal> {

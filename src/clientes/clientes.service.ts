@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -29,9 +30,15 @@ import {
   EnviarResumenCuentaDto,
   TipoResumenCuenta,
 } from './dto/enviar-resumen-cuenta.dto';
+import {
+  LEYENDA_OBJECION_RESUMEN,
+  TASA_MORA_DIARIA_MAXIMA,
+} from './cuenta-corriente.constants';
 
 @Injectable()
 export class ClientesService {
+  private readonly logger = new Logger(ClientesService.name);
+
   constructor(
     @InjectRepository(Cliente)
     private readonly clienteRepo: Repository<Cliente>,
@@ -730,6 +737,20 @@ export class ClientesService {
       return { total: 0, movimientos: [] };
     }
 
+    // Segundo cerrojo del tope legal. El DTO ya lo valida al guardar el plan, pero
+    // pueden existir planes cargados antes de esa validacion: aca se recorta antes
+    // de convertir el interes en un movimiento real de plata.
+    const tasaDiaria = Math.min(
+      Number(plan.recargo_porcentaje_diario),
+      TASA_MORA_DIARIA_MAXIMA,
+    );
+    if (tasaDiaria < Number(plan.recargo_porcentaje_diario)) {
+      this.logger.warn(
+        `Cliente ${clienteId}: tasa de mora ${plan.recargo_porcentaje_diario}% diario ` +
+          `excede el tope legal, se aplica ${TASA_MORA_DIARIA_MAXIMA}%`,
+      );
+    }
+
     const hasta = dto.hasta ? new Date(dto.hasta) : new Date();
     const cargos = await this.movimientoRepo.find({
       where: {
@@ -752,10 +773,11 @@ export class ClientesService {
       const dias = this.diasEntre(desde, hasta);
       if (dias <= 0) continue;
 
+      // Interes SIMPLE sobre el capital del cargo, nunca sobre el saldo total.
+      // Calcularlo sobre el saldo capitalizaria los recargos ya generados, y el
+      // anatocismo esta prohibido salvo pacto expreso semestral (CCyC art. 770).
       const monto = this.round(
-        Number(cargo.monto) *
-          (Number(plan.recargo_porcentaje_diario) / 100) *
-          dias,
+        Number(cargo.monto) * (tasaDiaria / 100) * dias,
       );
       if (monto <= 0) continue;
 
@@ -1029,6 +1051,10 @@ export class ClientesService {
       saldo > 0
         ? `Total adeudado: ${this.formatCurrency(saldo)}`
         : `Saldo a favor o sin deuda: ${this.formatCurrency(Math.abs(saldo))}`,
+      '',
+      // Sin este aviso el silencio del cliente no vale como aceptacion del saldo
+      // (CCyC art. 1145). Es lo que permite tener la cuenta por conformada.
+      LEYENDA_OBJECION_RESUMEN,
     ].join('\n');
   }
 

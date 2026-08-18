@@ -58,6 +58,16 @@ export class CajaController {
     return this.cajaService.findAll(sucursalId, { soloAbiertas: true });
   }
 
+  /**
+   * Solo dice si la sucursal tiene alguna caja abierta, sin exponer cuales ni de
+   * quien. Lo usa el vendedor de flujo separado, que no puede abrir ni ver cajas
+   * pero necesita saber si hay adonde mandar la venta antes de armar el carrito.
+   */
+  @Get('hay-abierta')
+  async hayAbierta(@SucursalActiva() sucursalId: string) {
+    return { hayCajaAbierta: await this.cajaService.hayCajaAbiertaEnSucursal(sucursalId) };
+  }
+
   @Get()
   @RequierePermiso('caja.ver')
   findAll(

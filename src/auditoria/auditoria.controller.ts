@@ -19,6 +19,7 @@ export class AuditoriaController {
     @Query('desde') desde?: string,
     @Query('hasta') hasta?: string,
     @Query('q') q?: string,
+    @Query('solo_sensibles') soloSensibles?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -32,9 +33,23 @@ export class AuditoriaController {
       desde,
       hasta,
       q,
+      solo_sensibles: soloSensibles === 'true',
       page: Number(page ?? 1),
       limit: Number(limit ?? 50),
     });
+  }
+
+  /**
+   * Acciones realmente presentes en la base, para poblar el selector en vez de
+   * obligar a tipear "CAMBIAR_ESTADO_PEDIDO_ENVIO" de memoria.
+   */
+  @Get('acciones')
+  @RequierePermiso('reportes.ver')
+  accionesDisponibles(
+    @SucursalActiva() sucursalId: string,
+    @Query('modulo') modulo?: string,
+  ) {
+    return this.auditoriaService.findAccionesDisponibles(sucursalId, modulo);
   }
 
   @Get('historial/:entidad/:entidadId')

@@ -85,6 +85,12 @@ export class ConfiguracionSucursal {
   @Column({ default: false })
   permitir_cuenta_corriente!: boolean;
 
+  // -- Envios a domicilio
+  // Apaga todo el circuito de pedidos con envio: sin esto la sucursal no muestra
+  // el boton en el POS ni acepta creacion de pedidos por API.
+  @Column({ default: false })
+  permitir_envios!: boolean;
+
   // -- Impresion de comprobantes
   @Column({ type: 'varchar', length: 30, default: FormatoImpresionComprobante.TICKET_80MM })
   formato_impresion_comprobante!: FormatoImpresionComprobante;

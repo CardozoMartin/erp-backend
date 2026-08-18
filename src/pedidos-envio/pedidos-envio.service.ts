@@ -9,6 +9,7 @@ import {
   EstadoComprobante,
   TipoComprobante,
 } from 'src/comprobantes/entities/comprobante.entity';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 import { ProductoService } from 'src/producto/producto.service';
 import { PagosPosService } from 'src/pagos-pos/pagos-pos.service';
 import { TipoPagoPos } from 'src/pagos-pos/entities/pago-pos.entity';
@@ -37,13 +38,28 @@ export class PedidosEnvioService {
     private readonly pagosPosService: PagosPosService,
     private readonly productoService: ProductoService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly configuracionService: ConfiguracionService,
   ) {}
+
+  /**
+   * Los envios se habilitan por sucursal. Se valida en el servicio y no solo en
+   * la UI: ocultar el boton no impide que alguien llame al endpoint.
+   */
+  private async validarEnviosHabilitados(sucursalId: string): Promise<void> {
+    const config = await this.configuracionService.crearPorDefecto(sucursalId);
+    if (!config.permitir_envios) {
+      throw new BadRequestException(
+        'Esta sucursal no tiene habilitados los envios a domicilio. Se activan en Configuracion del POS.',
+      );
+    }
+  }
 
   async crear(
     sucursalId: string,
     empleadoId: string,
     dto: CrearPedidoEnvioDto,
   ): Promise<PedidoEnvio> {
+    await this.validarEnviosHabilitados(sucursalId);
     if (!dto.cliente_id && !dto.cliente_nuevo) {
       throw new BadRequestException('Debe seleccionar o crear un cliente');
     }

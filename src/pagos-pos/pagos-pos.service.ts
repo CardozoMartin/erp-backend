@@ -10,7 +10,7 @@ import {
 } from 'src/comprobantes/entities/comprobante.entity';
 import { ComprobantesService } from 'src/comprobantes/comprobantes.service';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
-import { DescuentoStock } from 'src/configuracion/entities/configuracion.entity';
+import { DescuentoStock, ModoPOS } from 'src/configuracion/entities/configuracion.entity';
 import { PagosModuleService } from 'src/pagos-module/pagos-module.service';
 import { StockMovimientosService } from 'src/stock-movimientos/stock-movimientos.service';
 import { DataSource, Repository } from 'typeorm';
@@ -52,7 +52,11 @@ export class PagosPosService {
       throw new BadRequestException('Esta sucursal no permite pago mixto');
     }
     const caja = await this.cajaService.findOne(dto.caja_id, sucursalId);
-    if (caja.empleado_id !== empleadoId) {
+    // En SIMPLE hay una sola caja para toda la sucursal, asi que varios vendedores
+    // cobran sobre la misma: exigir caja propia dejaria operar a uno solo. En los
+    // demas modos cada empleado tiene la suya y el dueño si debe coincidir.
+    // El pago igual guarda su `empleado_id`, asi que el arqueo distingue quien cobro.
+    if (config.modo_pos !== ModoPOS.SIMPLE && caja.empleado_id !== empleadoId) {
       throw new BadRequestException('Solo podés cobrar usando tu propia caja');
     }
 

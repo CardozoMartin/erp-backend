@@ -16,6 +16,31 @@ export type RegistrarAuditoriaParams = {
   metadata?: Record<string, any> | null;
 };
 
+/**
+ * Acciones que tocan plata, stock, permisos o borran cosas. Son las que primero
+ * se miran cuando algo no cierra, por eso tienen filtro propio.
+ *
+ * El filtro corre en SQL y no sobre la pagina: filtrar en el front solo revisaba
+ * los 50 registros visibles y decia "0 sensibles" cuando los habia en otra pagina.
+ */
+export const ACCIONES_SENSIBLES = [
+  'ANULAR',
+  'CANCELAR',
+  'ELIMINAR',
+  'DESACTIVAR',
+  'PERMISO',
+  'ROL',
+  'STOCK',
+  'COSTO',
+  'PRECIO',
+  'RENDIR',
+  'CERRAR_CAJA',
+  'AJUSTE',
+  'OMITIR',
+  'DEVOLVER',
+  'REEMBOLSO',
+];
+
 @Injectable()
 export class AuditoriaService {
   constructor(
@@ -49,6 +74,7 @@ export class AuditoriaService {
     desde?: string;
     hasta?: string;
     q?: string;
+    solo_sensibles?: boolean;
     page?: number;
     limit?: number;
   }) {
@@ -70,6 +96,15 @@ export class AuditoriaService {
         { q: `%${filtros.q}%` },
       );
     }
+    if (filtros.solo_sensibles) {
+      const condiciones = ACCIONES_SENSIBLES.map(
+        (_, indice) => `auditoria.accion LIKE :sensible${indice}`,
+      ).join(' OR ');
+      const parametros = Object.fromEntries(
+        ACCIONES_SENSIBLES.map((token, indice) => [`sensible${indice}`, `%${token}%`]),
+      );
+      query.andWhere(`(${condiciones})`, parametros);
+    }
 
     return query
       .orderBy('auditoria.created_at', 'DESC')
@@ -85,6 +120,20 @@ export class AuditoriaService {
           totalPages: Math.max(1, Math.ceil(total / limit)),
         },
       }));
+  }
+
+  /** Acciones distintas que existen en la base, opcionalmente de un modulo */
+  async findAccionesDisponibles(
+    sucursalId?: string,
+    modulo?: string,
+  ): Promise<string[]> {
+    const query = this.repo
+      .createQueryBuilder('auditoria')
+      .select('DISTINCT auditoria.accion', 'accion');
+    if (sucursalId) query.andWhere('auditoria.sucursal_id = :sucursalId', { sucursalId });
+    if (modulo) query.andWhere('auditoria.modulo = :modulo', { modulo });
+    const filas = await query.orderBy('accion', 'ASC').getRawMany<{ accion: string }>();
+    return filas.map((fila) => fila.accion);
   }
 
   findHistorialEntidad(params: {

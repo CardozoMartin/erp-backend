@@ -45,6 +45,10 @@ export class CreateConfiguracionDto {
   permitir_cotizaciones?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  permitir_envios?: boolean;
+
+  @IsOptional()
   @IsString()
   prefijo_ticket?: string;
 

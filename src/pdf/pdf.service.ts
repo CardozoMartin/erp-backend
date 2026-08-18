@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 import { Comprobante, TipoComprobante } from 'src/comprobantes/entities/comprobante.entity';
 import { ConfiguracionSucursal } from 'src/configuracion/entities/configuracion.entity';
 import { Cliente } from 'src/clientes/entities/cliente.entity';
+import { LEYENDA_OBJECION_RESUMEN } from 'src/clientes/cuenta-corriente.constants';
 import { Empleado } from 'src/empleados/entities/empleado.entity';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 import { QrAfipService } from './qr-afip.service';
@@ -583,11 +584,24 @@ export class PdfService {
         .text(this.formatPeso(saldo), colAcum + 4, y + 5, { width: 58, align: 'right' });
       y += 32;
 
+      // ── Plazo de objecion ────────────────────────────────────────────────────
+      // Sin este aviso el silencio del cliente no vale como aceptacion del saldo
+      // (CCyC art. 1145), y la cuenta no se puede tener por conformada.
+      const altoAviso = 34;
+      const yAviso = Math.min(y + 4, 780 - altoAviso - 12);
+      doc.rect(MARGEN, yAviso, ANCHO_UTIL, altoAviso)
+        .fillAndStroke('#fffbeb', '#fde68a');
+      doc.fontSize(7.5).font('Helvetica').fillColor('#92400e')
+        .text(LEYENDA_OBJECION_RESUMEN, MARGEN + 8, yAviso + 7, {
+          width: ANCHO_UTIL - 16,
+          align: 'justify',
+        });
+
       // ── Pie ──────────────────────────────────────────────────────────────────
-      const yPie = Math.max(y + 10, 780);
+      const yPie = Math.max(yAviso + altoAviso + 10, 780);
       doc.moveTo(MARGEN, yPie).lineTo(MARGEN + ANCHO_UTIL, yPie)
         .strokeColor(COLOR_LINEA).lineWidth(1).stroke();
-      doc.fontSize(8).fillColor(COLOR_SUBTEXTO)
+      doc.fontSize(8).font('Helvetica').fillColor(COLOR_SUBTEXTO)
         .text(
           `${nombreNegocio}  |  Generado: ${new Date().toLocaleString('es-AR')}`,
           MARGEN, yPie + 6,

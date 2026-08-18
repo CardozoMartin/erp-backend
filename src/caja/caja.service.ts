@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -133,6 +134,9 @@ export class CajaService {
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('No se pueden registrar movimientos en una caja cerrada');
     }
+    // Un egreso sale del efectivo que rinde el dueño de la caja al cerrar: solo el
+    // puede registrarlo. El cobro compartido de SIMPLE no habilita esto.
+    this.validarCajaPropia(caja, empleadoId, 'registrar movimientos en');
 
     // 2. Solo permitimos movimientos manuales desde este endpoint.
     if (
@@ -353,6 +357,7 @@ export class CajaService {
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('La caja debe estar abierta para registrar consumos internos');
     }
+    this.validarCajaPropia(caja, empleadoId, 'registrar consumos internos en');
 
     const descripcion = dto.descripcion ?? 'Consumo interno';
     const monto = Number(dto.monto ?? 0);
@@ -461,7 +466,10 @@ export class CajaService {
     dto: CerrarCajaDto,
   ): Promise<Caja> {
     // 1. Validamos que la caja exista, pertenezca a la sucursal activa, al empleado y este abierta.
-    const caja = await this.findOne(cajaId, sucursalId, empleadoId);
+    //    Se busca sin filtrar por empleado para poder distinguir "no existe" de
+    //    "es de otro": filtrando, cerrar una caja ajena daba un 404 enganoso.
+    const caja = await this.findOne(cajaId, sucursalId);
+    this.validarCajaPropia(caja, empleadoId, 'cerrar');
     if (caja.estado !== EstadoCaja.ABIERTA) {
       throw new BadRequestException('La caja ya esta cerrada');
     }
@@ -648,12 +656,25 @@ export class CajaService {
     sucursalId: string,
     empleadoId: string,
   ): Promise<Caja | null> {
-    return this.cajaRepo.findOne({
+    const propia = await this.cajaRepo.findOne({
       where: {
         sucursal_id: sucursalId,
         empleado_id: empleadoId,
         estado: EstadoCaja.ABIERTA,
       },
+      relations: ['movimientos'],
+      order: { fecha_apertura: 'DESC' },
+    });
+    if (propia) return propia;
+
+    // En SIMPLE la sucursal tiene una unica caja compartida: quien no la abrio
+    // igual opera sobre ella, asi que devolvemos esa en vez de null. Sin esto un
+    // segundo vendedor no puede vender ni cobrar (no puede abrir otra caja).
+    const config = await this.configuracionService.crearPorDefecto(sucursalId);
+    if (config.modo_pos !== ModoPOS.SIMPLE) return null;
+
+    return this.cajaRepo.findOne({
+      where: { sucursal_id: sucursalId, estado: EstadoCaja.ABIERTA },
       relations: ['movimientos'],
       order: { fecha_apertura: 'DESC' },
     });
@@ -722,6 +743,20 @@ export class CajaService {
     });
     if (!caja) throw new NotFoundException('Caja no encontrada');
     return caja;
+  }
+
+  /**
+   * El arqueo lo rinde quien abrio la caja, asi que abrir/cerrar y todo lo que
+   * mueva plata fuera de un cobro queda reservado a su dueño. Es a proposito que
+   * NO se relaje en modo SIMPLE: ahi se comparte el cobro, no la responsabilidad
+   * del cierre.
+   */
+  private validarCajaPropia(caja: Caja, empleadoId: string, accion: string): void {
+    if (caja.empleado_id !== empleadoId) {
+      throw new ForbiddenException(
+        `No podés ${accion} una caja de otro usuario. Esta caja la abrió otra persona y es quien debe rendirla.`,
+      );
+    }
   }
 
   private snapshotCaja(caja: Caja) {

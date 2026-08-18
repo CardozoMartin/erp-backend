@@ -7,12 +7,17 @@ import {
   IsEmail,
   ValidateNested,
   IsInt,
+  Max,
   Min,
   IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoCliente } from '../entities/cliente.entity';
 import { TipoVencimiento } from '../entities/plan-pago.entity';
+import {
+  TASA_MORA_DIARIA_MAXIMA,
+  tasaAnualEquivalente,
+} from '../cuenta-corriente.constants';
 
 export class CreatePlanPagoDto {
   @IsEnum(TipoVencimiento)
@@ -23,9 +28,17 @@ export class CreatePlanPagoDto {
   @Min(1)
   valor_vencimiento!: number;
 
+  // Tope legal: por encima de esto un juez puede reducir el interes de oficio
+  // (CCyC art. 771). Ver cuenta-corriente.constants.ts.
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(TASA_MORA_DIARIA_MAXIMA, {
+    message:
+      `La tasa de mora no puede superar ${TASA_MORA_DIARIA_MAXIMA}% diario ` +
+      `(${tasaAnualEquivalente(TASA_MORA_DIARIA_MAXIMA)}% anual). Una tasa mayor puede ` +
+      'considerarse usuraria y ser reducida judicialmente.',
+  })
   recargo_porcentaje_diario?: number;
 
   @IsOptional()

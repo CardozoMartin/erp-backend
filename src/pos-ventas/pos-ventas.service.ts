@@ -56,11 +56,20 @@ export class PosVentasService {
       const hayCajaAbierta = await this.cajaService.hayCajaAbiertaEnSucursal(sucursalId);
       if (!hayCajaAbierta) {
         throw new BadRequestException(
-          'No hay una caja abierta en esta sucursal para recibir ventas pendientes',
+          'No hay una caja abierta en esta sucursal para recibir ventas pendientes. Pedile a un cajero que abra la caja.',
+        );
+      }
+    } else if (config.modo_pos === ModoPOS.SIMPLE) {
+      // SIMPLE: hay una sola caja para toda la sucursal y varios vendedores pueden
+      // cobrar sobre ella, asi que alcanza con que este abierta (la abre cualquiera).
+      const hayCajaAbierta = await this.cajaService.hayCajaAbiertaEnSucursal(sucursalId);
+      if (!hayCajaAbierta) {
+        throw new BadRequestException(
+          'No hay una caja abierta en esta sucursal. Abrí la caja antes de vender.',
         );
       }
     } else {
-      // SIMPLE y MULTICAJA: el vendedor también cobra, debe tener su propia caja abierta
+      // MULTICAJA: cada vendedor cobra en su propia caja, asi que necesita la suya
       const cajaEmpleado = await this.cajaService.findAbiertaPorEmpleado(sucursalId, empleadoId);
       if (!cajaEmpleado) {
         throw new BadRequestException(
