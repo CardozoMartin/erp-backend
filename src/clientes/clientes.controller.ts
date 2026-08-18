@@ -17,7 +17,7 @@ import type { Response } from 'express';
 import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
-import { CreatePlanPagoDto } from './dto/create-cliente.dto';
+import { CreateCuentaCorrienteDto } from './dto/create-cliente.dto';
 import {
   CalcularRecargosCuentaDto,
   RegistrarAjusteCuentaDto,
@@ -111,13 +111,17 @@ export class ClientesController {
   @RequierePermiso('clientes.cuenta_corriente.operar')
   activarCuentaCorriente(
     @Param('id') id: string,
-    @Body() body: { limite_credito: number; planPago?: CreatePlanPagoDto },
+    // Tipar el body con la clase (y no con un objeto inline) es lo que hace que el
+    // ValidationPipe corra: valida sobre metadatos de clase, que un tipo estructural
+    // de TypeScript no deja en tiempo de ejecucion. Sin esto el @Max del plan de pago
+    // no se aplicaba y se podian guardar tasas de mora usurarias.
+    @Body() body: CreateCuentaCorrienteDto,
     @Request() req,
     @SucursalActiva() sucursalId: string,
   ) {
     return this.service.activarCuentaCorriente(
       id,
-      body.limite_credito,
+      body.limite_credito ?? 0,
       body.planPago,
       req.user?.id,
       sucursalId,
